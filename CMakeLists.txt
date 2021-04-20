@@ -248,8 +248,8 @@ if(ANDROID)
     if(ENABLE_GL)
         message(STATUS "Disabling GL driver on android")
     endif()
-    set(ENABLE_GL OFF CACHE BOOL "" FORCE)
-    set(ENABLE_GLES ON CACHE BOOL "" FORCE)
+    # set(ENABLE_GL OFF CACHE BOOL "" FORCE)
+    # set(ENABLE_GLES ON CACHE BOOL "" FORCE)
     set(ENABLE_EGL ON CACHE BOOL "" FORCE)
 
     # Android doesn't support the Qt UI for obvious reasons

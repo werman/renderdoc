@@ -47,16 +47,26 @@ namespace Android
 void adbForwardPorts(uint16_t portbase, const rdcstr &deviceID, uint16_t jdwpPort, int pid,
                      bool silent)
 {
-  const char *forwardCommand = "forward tcp:%i localabstract:renderdoc_%i";
+  // const char *forwardCommand = "forward tcp:%i localabstract:renderdoc_%i";
 
-  adbExecCommand(deviceID,
-                 StringFormat::Fmt(forwardCommand, portbase + RenderDoc_ForwardRemoteServerOffset,
-                                   RenderDoc_RemoteServerPort),
-                 ".", silent);
-  adbExecCommand(deviceID,
-                 StringFormat::Fmt(forwardCommand, portbase + RenderDoc_ForwardTargetControlOffset,
-                                   RenderDoc_FirstTargetControlPort),
-                 ".", silent);
+  // adbExecCommand(deviceID,
+  //                StringFormat::Fmt(forwardCommand, portbase + RenderDoc_ForwardRemoteServerOffset,
+  //                                  RenderDoc_RemoteServerPort),
+  //                ".", silent);
+  // adbExecCommand(deviceID,
+  //                StringFormat::Fmt(forwardCommand, portbase + RenderDoc_ForwardTargetControlOffset,
+  //                                  RenderDoc_FirstTargetControlPort),
+  //                ".", silent);
+
+  // if(jdwpPort && pid)
+  //   adbExecCommand(deviceID, StringFormat::Fmt("forward tcp:%hu jdwp:%i", jdwpPort, pid));
+
+    adbExecCommand(deviceID,
+                   StringFormat::Fmt("forward tcp:%i tcp:%i", portbase + RenderDoc_ForwardRemoteServerOffset,
+                                     RenderDoc_RemoteServerPort), ".", silent);
+    adbExecCommand(deviceID,
+                   StringFormat::Fmt("forward tcp:%i tcp:%i", portbase + RenderDoc_ForwardTargetControlOffset,
+                                     RenderDoc_FirstTargetControlPort), ".", silent);
 
   if(jdwpPort && pid)
     adbExecCommand(deviceID, StringFormat::Fmt("forward tcp:%hu jdwp:%i", jdwpPort, pid));

@@ -46,11 +46,13 @@ void SocketPostSend()
 uint32_t Socket::GetRemoteIP() const
 {
   // Android uses abstract sockets which are only "localhost" accessible
-  return MakeIP(127, 0, 0, 1);
+  // return MakeIP(127, 0, 0, 1);
+  return GetIPFromTCPSocket((int)socket);
 }
 
-Socket *CreateServerSocket(const rdcstr &, uint16_t port, int queuesize)
+Socket *CreateServerSocket(const rdcstr &bindaddr, uint16_t port, int queuesize)
 {
-  return CreateAbstractServerSocket(port, queuesize);
+  // return CreateAbstractServerSocket(port, queuesize);
+  return CreateTCPServerSocket(bindaddr, port, queuesize);
 }
 };

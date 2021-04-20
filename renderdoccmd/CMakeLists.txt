@@ -68,6 +68,8 @@ else()
     add_executable(renderdoccmd ${sources})
 endif()
 
+target_compile_options (renderdoccmd PUBLIC -fexceptions)
+
 target_include_directories(renderdoccmd ${includes})
 target_link_libraries(renderdoccmd ${libraries})
 
