@@ -847,6 +847,9 @@ shading rate sampled from the fragment shading rate attachment.
 )");
   rdcpair<ShadingRateCombiner, ShadingRateCombiner> shadingRateCombiners = {
       ShadingRateCombiner::Keep, ShadingRateCombiner::Keep};
+
+  DOCUMENT("Whether rasterization order access is enabled for color or depth-stencil attachments");
+  bool rasterization_order_access;
 };
 
 DOCUMENT("Describes state of custom sample locations in the pipeline.");

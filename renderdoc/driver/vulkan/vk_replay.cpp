@@ -1460,6 +1460,9 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
     ret.rasterizer.slopeScaledDepthBias = state.bias.slope;
     ret.rasterizer.lineWidth = state.lineWidth;
 
+    ret.rasterizer.rasterization_order_access = p.colorBlendFlags & VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_ARM;
+    ret.rasterizer.rasterization_order_access |= p.colorBlendFlags & (VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_DEPTH_ACCESS_BIT_ARM | VK_PIPELINE_DEPTH_STENCIL_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_STENCIL_ACCESS_BIT_ARM);
+
     // MSAA
     ret.multisample.rasterSamples = p.rasterizationSamples;
     ret.multisample.sampleShadingEnable = p.sampleShadingEnable;

@@ -865,6 +865,10 @@ static const VkExtensionProperties supportedExtensions[] = {
     },
 #endif
     {
+        VK_ARM_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME,
+        VK_ARM_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_SPEC_VERSION,
+    },
+    {
         VK_EXT_4444_FORMATS_EXTENSION_NAME, VK_EXT_4444_FORMATS_SPEC_VERSION,
     },
 #ifdef VK_EXT_acquire_xlib_display

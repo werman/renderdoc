@@ -531,6 +531,10 @@ SERIALISE_VK_HANDLES();
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES,                                \
                VkPhysicalDeviceVulkan13Properties)                                                     \
                                                                                                        \
+  /* VK_ARM_rasterization_order_attachment_access */                                                   \
+  PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_ARM,   \
+               VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM)                          \
+                                                                                                       \
   /* VK_AMD_device_coherent_memory */                                                                  \
   PNEXT_STRUCT(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COHERENT_MEMORY_FEATURES_AMD,                         \
                VkPhysicalDeviceCoherentMemoryFeaturesAMD)                                              \
@@ -1293,10 +1297,6 @@ SERIALISE_VK_HANDLES();
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR)                                     \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR)                                    \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_SCREEN_SURFACE_CREATE_INFO_QNX)                                  \
-                                                                                                       \
-  /* VK_ARM_rasterization_order_attachment_access */                                                   \
-  PNEXT_UNSUPPORTED(                                                                                   \
-      VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_ARM)            \
                                                                                                        \
   /* VK_AMD_memory_overallocation_behavior */                                                          \
   PNEXT_UNSUPPORTED(VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD)                    \
@@ -6669,6 +6669,24 @@ void DoSerialise(SerialiserType &ser, VkPrivateDataSlotCreateInfo &el)
 
 template <>
 void Deserialise(const VkPrivateDataSlotCreateInfo &el)
+{
+  DeserialiseNext(el.pNext);
+}
+
+template <typename SerialiserType>
+void DoSerialise(SerialiserType &ser, VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM &el)
+{
+  RDCASSERT(ser.IsReading() ||
+            el.sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_ARM);
+  SerialiseNext(ser, el.sType, el.pNext);
+
+  SERIALISE_MEMBER(rasterizationOrderColorAttachmentAccess);
+  SERIALISE_MEMBER(rasterizationOrderDepthAttachmentAccess);
+  SERIALISE_MEMBER(rasterizationOrderStencilAttachmentAccess);
+}
+
+template <>
+void Deserialise(const VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM &el)
 {
   DeserialiseNext(el.pNext);
 }

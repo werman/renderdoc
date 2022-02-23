@@ -897,6 +897,8 @@ void VulkanPipelineStateViewer::clearState()
   ui->pipelineShadingRate->setText(tr("1x1"));
   ui->shadingRateCombiners->setText(tr("Keep, Keep"));
 
+  ui->rasterizationOrderAccess->setPixmap(cross);
+
   ui->sampleCount->setText(lit("1"));
   ui->sampleShading->setPixmap(tick);
   ui->minSampleShading->setText(lit("0.0"));
@@ -2530,6 +2532,8 @@ void VulkanPipelineStateViewer::setState()
     }
     ui->multiview->setText(views);
   }
+
+  ui->rasterizationOrderAccess->setPixmap(state.rasterizer.rasterization_order_access ? tick : cross);
 
   ui->sampleCount->setText(QString::number(state.multisample.rasterSamples));
   ui->sampleShading->setPixmap(state.multisample.sampleShadingEnable ? tick : cross);

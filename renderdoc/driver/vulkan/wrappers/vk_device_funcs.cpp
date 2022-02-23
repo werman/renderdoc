@@ -2678,6 +2678,15 @@ bool WrappedVulkan::Serialise_vkCreateDevice(SerialiserType &ser, VkPhysicalDevi
       }
       END_PHYS_EXT_CHECK();
 
+      BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesARM,
+                           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_FEATURES_ARM);
+      {
+        CHECK_PHYS_EXT_FEATURE(rasterizationOrderColorAttachmentAccess);
+        CHECK_PHYS_EXT_FEATURE(rasterizationOrderDepthAttachmentAccess);
+        CHECK_PHYS_EXT_FEATURE(rasterizationOrderStencilAttachmentAccess);
+      }
+      END_PHYS_EXT_CHECK();
+
       BEGIN_PHYS_EXT_CHECK(VkPhysicalDeviceRobustness2FeaturesEXT,
                            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT);
       {

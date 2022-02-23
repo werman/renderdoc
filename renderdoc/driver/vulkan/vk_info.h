@@ -376,11 +376,13 @@ struct VulkanCreationInfo
     VkStencilOpState back;
     float minDepthBounds;
     float maxDepthBounds;
+    VkPipelineDepthStencilStateCreateFlags depthStencilFlags;
 
     // VkPipelineColorBlendStateCreateInfo
     bool logicOpEnable;
     VkLogicOp logicOp;
     float blendConst[4];
+    VkPipelineColorBlendStateCreateFlags colorBlendFlags;
 
     struct CBAttachment
     {

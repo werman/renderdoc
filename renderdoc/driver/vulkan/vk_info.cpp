@@ -677,6 +677,7 @@ void VulkanCreationInfo::Pipeline::Init(VulkanResourceManager *resourceMan,
     back = pCreateInfo->pDepthStencilState->back;
     minDepthBounds = pCreateInfo->pDepthStencilState->minDepthBounds;
     maxDepthBounds = pCreateInfo->pDepthStencilState->maxDepthBounds;
+    depthStencilFlags = pCreateInfo->pDepthStencilState->flags;
   }
   else
   {
@@ -695,6 +696,7 @@ void VulkanCreationInfo::Pipeline::Init(VulkanResourceManager *resourceMan,
     back = front;
     minDepthBounds = 0.0f;
     maxDepthBounds = 1.0f;
+    depthStencilFlags = 0;
   }
 
   // VkPipelineColorBlendStateCreateInfo
@@ -727,6 +729,8 @@ void VulkanCreationInfo::Pipeline::Init(VulkanResourceManager *resourceMan,
       attachments[i].channelWriteMask =
           (uint8_t)pCreateInfo->pColorBlendState->pAttachments[i].colorWriteMask;
     }
+
+    colorBlendFlags = pCreateInfo->pColorBlendState->flags;
   }
   else
   {
@@ -735,6 +739,8 @@ void VulkanCreationInfo::Pipeline::Init(VulkanResourceManager *resourceMan,
     RDCEraseEl(blendConst);
 
     attachments.clear();
+
+    colorBlendFlags = 0;
   }
 
   // this struct probably will never get used, since the user could just set the colorWriteMask
