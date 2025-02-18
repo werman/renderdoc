@@ -111,7 +111,9 @@ static void Config2XML(pugi::xml_node &parent, const SDObject &child)
   }
   else
   {
-    const SDObject *value = child.FindChild("value");
+    const SDObject *value = child.FindChild("real_value");
+    if (!value)
+      value = child.FindChild("value");
 
     parent.insert_child_before(pugi::node_comment, obj)
         .set_value((" " + child.FindChild("description")->data.str + " ").c_str());
@@ -464,6 +466,58 @@ CONFIG_SUPPORT_TYPE(uint32_t)
 CONFIG_SUPPORT_TYPE(rdcstr)
 CONFIG_SUPPORT_TYPE(rdcarray<rdcstr>)
 
+void ProcessEnvVars(SDObject *config)
+{
+  for(size_t i = 0; i < config->NumChildren(); i++)
+  {
+    SDObject *child = config->GetChild(i);
+    if(child->type.name == "category"_lit)
+    {
+      ProcessEnvVars(child);
+    }
+    else if(child->type.name == "setting"_lit && child->FindChild("key"))
+    {
+      rdcstr envVarName = "RENDERDOC_" + child->FindChild("key")->data.str;
+      rdcstr envVal = Process::GetEnvVariable(envVarName);
+      if(envVal.empty())
+        continue;
+
+      SDObject *valueObj = child->FindChild("value");
+      if(valueObj)
+      {
+        SDObject *oldValueObj = valueObj->Duplicate();
+        oldValueObj->name = "real_value"_lit;
+
+        switch(valueObj->type.basetype)
+        {
+          case SDBasic::Boolean:
+            valueObj->data.basic.b = (strcmp(envVal.c_str(), "1") == 0 ||
+                                      strcmp(envVal.c_str(), "true") == 0);
+            break;
+          case SDBasic::UnsignedInteger:
+            valueObj->data.basic.u = strtoull(envVal.c_str(), NULL, 0);
+            break;
+          case SDBasic::SignedInteger:
+            valueObj->data.basic.i = strtoll(envVal.c_str(), NULL, 0);
+            break;
+          case SDBasic::Float:
+            valueObj->data.basic.d = strtod(envVal.c_str(), NULL);
+            break;
+          case SDBasic::String:
+            valueObj->data.str = envVal;
+            break;
+          default:
+            RDCWARN("Unsupported config type %s for env var %s",
+                    ToStr(valueObj->type.basetype).c_str(), envVarName.c_str());
+            break;
+        }
+
+        child->AddAndOwnChild(oldValueObj);
+      }
+    }
+  }
+}
+
 void RenderDoc::ProcessConfig()
 {
   rdcstr confFile = FileIO::GetAppFolderFilename("renderdoc.conf");
@@ -510,6 +564,8 @@ void RenderDoc::ProcessConfig()
 
   // delete the loaded config if we have it
   delete loadedConfig;
+
+  ProcessEnvVars(m_Config);
 }
 
 void RenderDoc::SaveConfigSettings()
