@@ -2354,7 +2354,7 @@ HRESULT WrappedID3D12Device::CheckFeatureSupport(D3D12_FEATURE Feature, void *pF
 
   if(dolog)
     RDCLOG("Checking feature support for %s", ToStr(Feature).c_str());
-  HRESULT hr = m_pDevice->CheckFeatureSupport(Feature, pFeatureSupportData, FeatureSupportDataSize);
+  HRESULT hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, Feature, pFeatureSupportData, FeatureSupportDataSize);
 
   if(FAILED(hr))
   {
@@ -2491,7 +2491,7 @@ UINT WrappedID3D12Device::GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP
 D3D12_RESOURCE_ALLOCATION_INFO WrappedID3D12Device::GetResourceAllocationInfo(
     UINT visibleMask, UINT numResourceDescs, const D3D12_RESOURCE_DESC *pResourceDescs)
 {
-  return m_pDevice->GetResourceAllocationInfo(visibleMask, numResourceDescs, pResourceDescs);
+  return m_d3d12profile.GetResourceAllocationInfo(m_pDevice, visibleMask, numResourceDescs, pResourceDescs);
 }
 
 D3D12_HEAP_PROPERTIES WrappedID3D12Device::GetCustomHeapProperties(UINT nodeMask,

@@ -52,7 +52,7 @@ HRESULT WrappedID3D12Device::OpenExistingHeapFromAddress(const void *pAddress, R
       heapDesc.Flags &= ~(D3D12_HEAP_FLAG_SHARED | D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER);
 
       D3D12_FEATURE_DATA_D3D12_OPTIONS opts = {};
-      if(SUCCEEDED(m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &opts, sizeof(opts))))
+      if(SUCCEEDED(m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS, &opts, sizeof(opts))))
       {
         if(opts.ResourceHeapTier == D3D12_RESOURCE_HEAP_TIER_1)
         {
@@ -124,7 +124,7 @@ HRESULT WrappedID3D12Device::OpenExistingHeapFromFileMapping(HANDLE hFileMapping
       heapDesc.Flags &= ~(D3D12_HEAP_FLAG_SHARED | D3D12_HEAP_FLAG_SHARED_CROSS_ADAPTER);
 
       D3D12_FEATURE_DATA_D3D12_OPTIONS opts = {};
-      if(SUCCEEDED(m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &opts, sizeof(opts))))
+      if(SUCCEEDED(m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS, &opts, sizeof(opts))))
       {
         if(opts.ResourceHeapTier == D3D12_RESOURCE_HEAP_TIER_1)
         {

@@ -31,8 +31,7 @@ D3D12_RESOURCE_ALLOCATION_INFO STDMETHODCALLTYPE WrappedID3D12Device::GetResourc
     _In_reads_(numResourceDescs) const D3D12_RESOURCE_DESC1 *pResourceDescs,
     _Out_writes_opt_(numResourceDescs) D3D12_RESOURCE_ALLOCATION_INFO1 *pResourceAllocationInfo1)
 {
-  return m_pDevice8->GetResourceAllocationInfo2(visibleMask, numResourceDescs, pResourceDescs,
-                                                pResourceAllocationInfo1);
+  return m_d3d12profile.GetResourceAllocationInfo2(m_pDevice8, visibleMask, numResourceDescs, pResourceDescs, pResourceAllocationInfo1);
 }
 
 void STDMETHODCALLTYPE WrappedID3D12Device::CreateSamplerFeedbackUnorderedAccessView(

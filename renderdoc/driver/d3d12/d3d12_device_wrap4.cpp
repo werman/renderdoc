@@ -351,8 +351,7 @@ D3D12_RESOURCE_ALLOCATION_INFO WrappedID3D12Device::GetResourceAllocationInfo1(
     _In_reads_(numResourceDescs) const D3D12_RESOURCE_DESC *pResourceDescs,
     _Out_writes_opt_(numResourceDescs) D3D12_RESOURCE_ALLOCATION_INFO1 *pResourceAllocationInfo1)
 {
-  return m_pDevice4->GetResourceAllocationInfo1(visibleMask, numResourceDescs, pResourceDescs,
-                                                pResourceAllocationInfo1);
+  return m_d3d12profile.GetResourceAllocationInfo1(m_pDevice4, visibleMask, numResourceDescs, pResourceDescs, pResourceAllocationInfo1);
 }
 
 ID3D12Fence *WrappedID3D12Device::CreateProtectedSessionFence(ID3D12Fence *real)

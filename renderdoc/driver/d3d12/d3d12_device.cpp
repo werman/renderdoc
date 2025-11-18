@@ -572,6 +572,11 @@ WrappedID3D12Device::WrappedID3D12Device(ID3D12Device *realDevice, D3D12InitPara
 
   m_StructuredFile = m_StoredStructuredData = new SDFile;
 
+  // Load profile from Windows user documents folder
+  rdcstr documentsPath = FileIO::GetHomeFolderFilename();
+  rdcstr profilePath = documentsPath + "\\d3d12_profiles.json";
+  m_d3d12profile.LoadProfile(profilePath.c_str());
+
   RDCEraseEl(m_D3D12Opts);
   RDCEraseEl(m_D3D12Opts1);
   RDCEraseEl(m_D3D12Opts2);
@@ -632,13 +637,13 @@ WrappedID3D12Device::WrappedID3D12Device(ID3D12Device *realDevice, D3D12InitPara
 
     for(size_t i = 0; i < ARRAY_COUNT(m_DescriptorIncrements); i++)
       m_DescriptorIncrements[i] =
-          m_pDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE(i));
+        m_d3d12profile.GetDescriptorHandleIncrementSize(m_pDevice, D3D12_DESCRIPTOR_HEAP_TYPE(i));
 
     HRESULT hr = S_OK;
 
     {
       D3D12_FEATURE_DATA_ROOT_SIGNATURE rootSigVer;
-      hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &rootSigVer,
+      hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_ROOT_SIGNATURE, &rootSigVer,
                                           sizeof(rootSigVer));
       if(hr != S_OK)
         rootSigVer.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
@@ -646,51 +651,51 @@ WrappedID3D12Device::WrappedID3D12Device(ID3D12Device *realDevice, D3D12InitPara
       m_RootSigVersion = rootSigVer.HighestVersion;
     }
 
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &m_D3D12Opts,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS, &m_D3D12Opts,
                                         sizeof(m_D3D12Opts));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS1, &m_D3D12Opts1,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS1, &m_D3D12Opts1,
                                         sizeof(m_D3D12Opts1));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts1);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &m_D3D12Opts2,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS2, &m_D3D12Opts2,
                                         sizeof(m_D3D12Opts2));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts2);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS3, &m_D3D12Opts3,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS3, &m_D3D12Opts3,
                                         sizeof(m_D3D12Opts3));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts3);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &m_D3D12Opts5,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS5, &m_D3D12Opts5,
                                         sizeof(m_D3D12Opts5));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts5);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS6, &m_D3D12Opts6,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS6, &m_D3D12Opts6,
                                         sizeof(m_D3D12Opts6));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts6);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &m_D3D12Opts7,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS7, &m_D3D12Opts7,
                                         sizeof(m_D3D12Opts7));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts7);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS9, &m_D3D12Opts9,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS9, &m_D3D12Opts9,
                                         sizeof(m_D3D12Opts9));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts9);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &m_D3D12Opts12,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS12, &m_D3D12Opts12,
                                         sizeof(m_D3D12Opts12));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts12);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS14, &m_D3D12Opts14,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS14, &m_D3D12Opts14,
                                         sizeof(m_D3D12Opts14));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts14);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS15, &m_D3D12Opts15,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS15, &m_D3D12Opts15,
                                         sizeof(m_D3D12Opts15));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts15);
-    hr = m_pDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS16, &m_D3D12Opts16,
+    hr = m_d3d12profile.CheckFeatureSupport(m_pDevice, D3D12_FEATURE_D3D12_OPTIONS16, &m_D3D12Opts16,
                                         sizeof(m_D3D12Opts16));
     if(hr != S_OK)
       RDCEraseEl(m_D3D12Opts16);
