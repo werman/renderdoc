@@ -497,10 +497,11 @@ bool WrappedID3D12GraphicsCommandList::Serialise_ResourceBarrier(
           }
           else if(b.Type == D3D12_RESOURCE_BARRIER_TYPE_ALIASING)
           {
+            // When replaying the resources may not alias, which can lead to command list recording failure.
             res1 = b.Aliasing.pResourceBefore;
             res2 = b.Aliasing.pResourceAfter;
             b.Aliasing.pResourceBefore = Unwrap(b.Aliasing.pResourceBefore);
-            b.Aliasing.pResourceAfter = Unwrap(b.Aliasing.pResourceAfter);
+            b.Aliasing.pResourceAfter = NULL;//Unwrap(b.Aliasing.pResourceAfter);
           }
           else if(b.Type == D3D12_RESOURCE_BARRIER_TYPE_UAV)
           {
@@ -579,8 +580,10 @@ void WrappedID3D12GraphicsCommandList::ResourceBarrier(UINT NumBarriers,
     }
     else if(barriers[i].Type == D3D12_RESOURCE_BARRIER_TYPE_ALIASING)
     {
+      // When recording the resources may not alias when app expects them to due to memory
+      // allocation changes via profiles.
       barriers[i].Aliasing.pResourceBefore = Unwrap(barriers[i].Aliasing.pResourceBefore);
-      barriers[i].Aliasing.pResourceAfter = Unwrap(barriers[i].Aliasing.pResourceAfter);
+      barriers[i].Aliasing.pResourceAfter = NULL;//Unwrap(barriers[i].Aliasing.pResourceAfter);
     }
     else if(barriers[i].Type == D3D12_RESOURCE_BARRIER_TYPE_UAV)
     {
