@@ -34,7 +34,7 @@ D3D12_RESOURCE_ALLOCATION_INFO WrappedID3D12Device::GetResourceAllocationInfo3(
     _In_opt_count_(numResourceDescs) const DXGI_FORMAT *const *ppCastableFormats,
     _Out_writes_opt_(numResourceDescs) D3D12_RESOURCE_ALLOCATION_INFO1 *pResourceAllocationInfo1)
 {
-  return m_pDevice12->GetResourceAllocationInfo3(visibleMask, numResourceDescs, pResourceDescs,
+  return m_d3d12profile.GetResourceAllocationInfo3(m_pDevice12, visibleMask, numResourceDescs, pResourceDescs,
                                                  pNumCastableFormats, ppCastableFormats,
                                                  pResourceAllocationInfo1);
 }

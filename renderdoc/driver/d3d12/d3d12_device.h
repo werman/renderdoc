@@ -36,6 +36,7 @@
 #include "replay/replay_driver.h"
 #include "d3d12_common.h"
 #include "d3d12_manager.h"
+#include "profiles/d3d12_profiles.h"
 
 typedef struct D3D11_RESOURCE_FLAGS
 {
@@ -590,6 +591,8 @@ private:
   ID3D12DeviceDownlevel *m_pDownlevel;
 
   WrappedID3D12DeviceConfiguration m_DevConfig;
+
+  D3D12Profile m_d3d12profile;
 
   // list of all queues being captured
   rdcarray<WrappedID3D12CommandQueue *> m_Queues;

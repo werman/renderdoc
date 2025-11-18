@@ -87,6 +87,12 @@
     <ClInclude Include="d3d12_rootsig.h">
       <Filter>Util</Filter>
     </ClInclude>
+    <ClInclude Include="profiles\json.hpp">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="profiles\d3d12_profiles.h">
+      <Filter>Profiles</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="d3d12_common.cpp">
@@ -253,6 +259,9 @@
     </ClCompile>
     <ClCompile Include="d3d12_command_list10_wrap.cpp">
       <Filter>Wrapped</Filter>
+    </ClCompile>
+    <ClCompile Include="profiles\d3d12_profiles.cpp">
+      <Filter>Profiles</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
