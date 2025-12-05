@@ -570,6 +570,15 @@ public:
     GetInterface.Register("d3d12.dll", "D3D12GetInterface", D3D12GetInterface_hook);
     EnableExperimentalFeatures.Register("d3d12.dll", "D3D12EnableExperimentalFeatures",
                                         D3D12EnableExperimentalFeatures_hook);
+
+    LibraryHooks::RegisterLibraryHook("sl.interposer.dll", NULL);
+
+    CreateDeviceSL.Register("sl.interposer.dll", "D3D12CreateDevice", D3D12CreateDevice_SL_hook);
+    GetDebugInterfaceSL.Register("sl.interposer.dll", "D3D12GetDebugInterface", D3D12GetDebugInterface_SL_hook);
+    GetInterfaceSL.Register("sl.interposer.dll", "D3D12GetInterface", D3D12GetInterface_SL_hook);
+    EnableExperimentalFeaturesSL.Register("sl.interposer.dll", "D3D12EnableExperimentalFeatures",
+                                        D3D12EnableExperimentalFeatures_SL_hook);
+
     GetD3D11On12On7.Register("d3d11on12.dll", "GetD3D11On12On7Interface",
                              GetD3D11On12On7Interface_hook);
 
@@ -688,6 +697,12 @@ private:
   HookedFunction<PFN_D3D12_GET_INTERFACE> GetInterface;
   HookedFunction<PFN_D3D12_CREATE_DEVICE> CreateDevice;
   HookedFunction<PFN_D3D12_ENABLE_EXPERIMENTAL_FEATURES> EnableExperimentalFeatures;
+
+  HookedFunction<PFN_D3D12_GET_DEBUG_INTERFACE> GetDebugInterfaceSL;
+  HookedFunction<PFN_D3D12_GET_INTERFACE> GetInterfaceSL;
+  HookedFunction<PFN_D3D12_CREATE_DEVICE> CreateDeviceSL;
+  HookedFunction<PFN_D3D12_ENABLE_EXPERIMENTAL_FEATURES> EnableExperimentalFeaturesSL;
+
   HookedFunction<PFNGetD3D11On12On7Interface> GetD3D11On12On7;
 
   // re-entrancy detection (can happen in rare cases with e.g. fraps)
@@ -892,22 +907,22 @@ private:
     return ret;
   }
 
-  static HRESULT WINAPI D3D12CreateDevice_hook(IUnknown *pAdapter,
-                                               D3D_FEATURE_LEVEL MinimumFeatureLevel, REFIID riid,
-                                               void **ppDevice)
+  static HRESULT CreateDevice_Internal(PFN_D3D12_CREATE_DEVICE createFunc, const char *primaryDll,
+                                       IUnknown *pAdapter, D3D_FEATURE_LEVEL MinimumFeatureLevel,
+                                       REFIID riid, void **ppDevice)
   {
-    PFN_D3D12_CREATE_DEVICE createFunc = d3d12hooks.CreateDevice();
+    RDCDEBUG("Call to D3D12CreateDevice, primaryDll: %s", primaryDll);
 
     if(!createFunc)
     {
-      HMODULE d3d12 = GetModuleHandleA("d3d12.dll");
+      HMODULE module = GetModuleHandleA(primaryDll);
 
-      if(d3d12)
-        createFunc = (PFN_D3D12_CREATE_DEVICE)GetProcAddress(d3d12, "D3D12CreateDevice");
+      if(module)
+        createFunc = (PFN_D3D12_CREATE_DEVICE)GetProcAddress(module, "D3D12CreateDevice");
 
       if(!createFunc)
       {
-        RDCERR("Something went seriously wrong, d3d12.dll couldn't be loaded!");
+        RDCERR("Something went seriously wrong, %s couldn't be loaded!", primaryDll);
         return E_UNEXPECTED;
       }
     }
@@ -916,9 +931,25 @@ private:
                                       ppDevice);
   }
 
-  static HRESULT WINAPI D3D12EnableExperimentalFeatures_hook(UINT NumFeatures, const IID *pIIDs,
-                                                             void *pConfigurationStructs,
-                                                             UINT *pConfigurationStructSizes)
+  static HRESULT WINAPI D3D12CreateDevice_hook(IUnknown *pAdapter,
+                                               D3D_FEATURE_LEVEL MinimumFeatureLevel, REFIID riid,
+                                               void **ppDevice)
+  {
+    return CreateDevice_Internal(d3d12hooks.CreateDevice(), "d3d12.dll", pAdapter,
+                                 MinimumFeatureLevel, riid, ppDevice);
+  }
+
+  static HRESULT WINAPI D3D12CreateDevice_SL_hook(IUnknown *pAdapter,
+                                                   D3D_FEATURE_LEVEL MinimumFeatureLevel, REFIID riid,
+                                                   void **ppDevice)
+  {
+    return CreateDevice_Internal(d3d12hooks.CreateDeviceSL(), "sl.interposer.dll", pAdapter,
+                                 MinimumFeatureLevel, riid, ppDevice);
+  }
+
+  static HRESULT EnableExperimentalFeatures_Internal(
+      PFN_D3D12_ENABLE_EXPERIMENTAL_FEATURES enableFunc, UINT NumFeatures, const IID *pIIDs,
+      void *pConfigurationStructs, UINT *pConfigurationStructSizes)
   {
     rdcarray<IID> allowedIIDs;
 
@@ -934,13 +965,30 @@ private:
     // there's no "partially successful" error code, so we just lie to the application and pretend
     // that any filtered IIDs also succeeded
     if(!allowedIIDs.empty())
-      return d3d12hooks.EnableExperimentalFeatures()((UINT)allowedIIDs.size(), allowedIIDs.data(),
-                                                     NULL, NULL);
+      return enableFunc((UINT)allowedIIDs.size(), allowedIIDs.data(), NULL, NULL);
 
     // header says "The call returns E_NOINTERFACE if an unrecognized feature is passed in or
     // Windows Developer mode is not on." so this is the most appropriate error for if no IIDs are
     // allowed.
     return E_NOINTERFACE;
+  }
+
+  static HRESULT WINAPI D3D12EnableExperimentalFeatures_hook(UINT NumFeatures, const IID *pIIDs,
+                                                             void *pConfigurationStructs,
+                                                             UINT *pConfigurationStructSizes)
+  {
+    return EnableExperimentalFeatures_Internal(d3d12hooks.EnableExperimentalFeatures(), NumFeatures,
+                                               pIIDs, pConfigurationStructs,
+                                               pConfigurationStructSizes);
+  }
+
+  static HRESULT WINAPI D3D12EnableExperimentalFeatures_SL_hook(UINT NumFeatures, const IID *pIIDs,
+                                                                 void *pConfigurationStructs,
+                                                                 UINT *pConfigurationStructSizes)
+  {
+    return EnableExperimentalFeatures_Internal(d3d12hooks.EnableExperimentalFeaturesSL(), NumFeatures,
+                                              pIIDs, pConfigurationStructs,
+                                              pConfigurationStructSizes);
   }
 
   static HRESULT WINAPI GetD3D11On12On7Interface_hook(ID3D11On12On7 **ppIface)
@@ -951,7 +999,8 @@ private:
     return S_OK;
   }
 
-  static HRESULT WINAPI D3D12GetDebugInterface_hook(REFIID riid, void **ppvDebug)
+  static HRESULT GetDebugInterface_Internal(PFN_D3D12_GET_DEBUG_INTERFACE getDebugFunc, REFIID riid,
+                                            void **ppvDebug)
   {
     if(riid == CLSID_D3D12StateObjectFactory)
     {
@@ -960,7 +1009,7 @@ private:
     }
 
     IUnknown *realUnk = NULL;
-    HRESULT real = d3d12hooks.GetDebugInterface()(riid, (void **)&realUnk);
+    HRESULT real = getDebugFunc(riid, (void **)&realUnk);
 
     HRESULT hr = GetWrappedInterface(realUnk, riid, ppvDebug);
 
@@ -976,16 +1025,22 @@ private:
     return E_NOINTERFACE;
   }
 
-  static HRESULT WINAPI D3D12GetInterface_hook(REFCLSID rclsid, REFIID riid, void **ppvDebug)
+  static HRESULT WINAPI D3D12GetDebugInterface_hook(REFIID riid, void **ppvDebug)
   {
-    if(riid == CLSID_D3D12StateObjectFactory)
-    {
-      RDCLOG("Deliberately reporting no support for state object factories");
-      return E_NOINTERFACE;
-    }
+    return GetDebugInterface_Internal(d3d12hooks.GetDebugInterface(), riid, ppvDebug);
+  }
 
+  static HRESULT WINAPI D3D12GetDebugInterface_SL_hook(REFIID riid, void **ppvDebug)
+  {
+    return GetDebugInterface_Internal(d3d12hooks.GetDebugInterfaceSL(), riid, ppvDebug);
+  }
+
+  static HRESULT GetInterface_Internal(PFN_D3D12_GET_INTERFACE getInterfaceFunc, REFCLSID rclsid,
+                                       REFIID riid, void **ppvDebug)
+  {
+    RDCDEBUG("Call to D3D12GetInterface");
     IUnknown *realUnk = NULL;
-    HRESULT real = d3d12hooks.GetInterface()(rclsid, riid, (void **)&realUnk);
+    HRESULT real = getInterfaceFunc(rclsid, riid, (void **)&realUnk);
 
     HRESULT hr = GetWrappedInterface(realUnk, riid, ppvDebug);
 
@@ -999,6 +1054,16 @@ private:
             ToStr(riid).c_str(), ToStr(rclsid).c_str(), SUCCEEDED(real) ? "did" : "did not", real);
 
     return E_NOINTERFACE;
+  }
+
+  static HRESULT WINAPI D3D12GetInterface_hook(REFCLSID rclsid, REFIID riid, void **ppvDebug)
+  {
+    return GetInterface_Internal(d3d12hooks.GetInterface(), rclsid, riid, ppvDebug);
+  }
+
+  static HRESULT WINAPI D3D12GetInterface_SL_hook(REFCLSID rclsid, REFIID riid, void **ppvDebug)
+  {
+    return GetInterface_Internal(d3d12hooks.GetInterfaceSL(), rclsid, riid, ppvDebug);
   }
 };
 
