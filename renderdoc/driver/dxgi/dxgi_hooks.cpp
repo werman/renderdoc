@@ -256,6 +256,14 @@ public:
     CreateDXGIFactory2.Register("dxgi.dll", "CreateDXGIFactory2", CreateDXGIFactory2_hook);
     GetDebugInterface.Register("dxgi.dll", "DXGIGetDebugInterface", DXGIGetDebugInterface_hook);
     GetDebugInterface1.Register("dxgi.dll", "DXGIGetDebugInterface1", DXGIGetDebugInterface1_hook);
+
+    LibraryHooks::RegisterLibraryHook("sl.interposer.dll", NULL);
+
+    CreateDXGIFactorySL.Register("sl.interposer.dll", "CreateDXGIFactory", CreateDXGIFactory_SL_hook);
+    CreateDXGIFactory1SL.Register("sl.interposer.dll", "CreateDXGIFactory1", CreateDXGIFactory1_SL_hook);
+    CreateDXGIFactory2SL.Register("sl.interposer.dll", "CreateDXGIFactory2", CreateDXGIFactory2_SL_hook);
+    GetDebugInterfaceSL.Register("sl.interposer.dll", "DXGIGetDebugInterface", DXGIGetDebugInterface_SL_hook);
+    GetDebugInterface1SL.Register("sl.interposer.dll", "DXGIGetDebugInterface1", DXGIGetDebugInterface1_SL_hook);
   }
 
 private:
@@ -270,35 +278,55 @@ private:
   HookedFunction<PFN_GET_DEBUG_INTERFACE> GetDebugInterface;
   HookedFunction<PFN_GET_DEBUG_INTERFACE1> GetDebugInterface1;
 
-  static HRESULT WINAPI CreateDXGIFactory_hook(__in REFIID riid, __out void **ppFactory)
+  HookedFunction<PFN_CREATE_DXGI_FACTORY> CreateDXGIFactorySL;
+  HookedFunction<PFN_CREATE_DXGI_FACTORY> CreateDXGIFactory1SL;
+  HookedFunction<PFN_CREATE_DXGI_FACTORY2> CreateDXGIFactory2SL;
+  HookedFunction<PFN_GET_DEBUG_INTERFACE> GetDebugInterfaceSL;
+  HookedFunction<PFN_GET_DEBUG_INTERFACE1> GetDebugInterface1SL;
+
+  static HRESULT CreateDXGIFactory_Internal(PFN_CREATE_DXGI_FACTORY createFunc, const char *funcName,
+                                            REFIID riid, void **ppFactory)
   {
     if(ppFactory)
       *ppFactory = NULL;
-    HRESULT ret = dxgihooks.CreateDXGIFactory()(riid, ppFactory);
+    HRESULT ret = createFunc(riid, ppFactory);
 
     if(SUCCEEDED(ret))
-      RefCountDXGIObject::HandleWrap("CreateDXGIFactory", riid, ppFactory);
+      RefCountDXGIObject::HandleWrap(funcName, riid, ppFactory);
 
     return ret;
+  }
+
+  static HRESULT WINAPI CreateDXGIFactory_hook(__in REFIID riid, __out void **ppFactory)
+  {
+    return CreateDXGIFactory_Internal(dxgihooks.CreateDXGIFactory(), "CreateDXGIFactory", riid,
+                                     ppFactory);
+  }
+
+  static HRESULT WINAPI CreateDXGIFactory_SL_hook(__in REFIID riid, __out void **ppFactory)
+  {
+    return CreateDXGIFactory_Internal(dxgihooks.CreateDXGIFactorySL(), "CreateDXGIFactory", riid,
+                                    ppFactory);
   }
 
   static HRESULT WINAPI CreateDXGIFactory1_hook(__in REFIID riid, __out void **ppFactory)
   {
-    if(ppFactory)
-      *ppFactory = NULL;
-    HRESULT ret = dxgihooks.CreateDXGIFactory1()(riid, ppFactory);
-
-    if(SUCCEEDED(ret))
-      RefCountDXGIObject::HandleWrap("CreateDXGIFactory1", riid, ppFactory);
-
-    return ret;
+    return CreateDXGIFactory_Internal(dxgihooks.CreateDXGIFactory1(), "CreateDXGIFactory1", riid,
+                                     ppFactory);
   }
 
-  static HRESULT WINAPI CreateDXGIFactory2_hook(UINT Flags, REFIID riid, void **ppFactory)
+  static HRESULT WINAPI CreateDXGIFactory1_SL_hook(__in REFIID riid, __out void **ppFactory)
+  {
+    return CreateDXGIFactory_Internal(dxgihooks.CreateDXGIFactory1SL(), "CreateDXGIFactory1", riid,
+                                    ppFactory);
+  }
+
+  static HRESULT CreateDXGIFactory2_Internal(PFN_CREATE_DXGI_FACTORY2 createFunc, UINT Flags,
+                                             REFIID riid, void **ppFactory)
   {
     if(ppFactory)
       *ppFactory = NULL;
-    HRESULT ret = dxgihooks.CreateDXGIFactory2()(Flags, riid, ppFactory);
+    HRESULT ret = createFunc(Flags, riid, ppFactory);
 
     if(SUCCEEDED(ret))
       RefCountDXGIObject::HandleWrap("CreateDXGIFactory2", riid, ppFactory);
@@ -306,7 +334,18 @@ private:
     return ret;
   }
 
-  static HRESULT WINAPI DXGIGetDebugInterface_hook(REFIID riid, void **ppDebug)
+  static HRESULT WINAPI CreateDXGIFactory2_hook(UINT Flags, REFIID riid, void **ppFactory)
+  {
+    return CreateDXGIFactory2_Internal(dxgihooks.CreateDXGIFactory2(), Flags, riid, ppFactory);
+  }
+
+  static HRESULT WINAPI CreateDXGIFactory2_SL_hook(UINT Flags, REFIID riid, void **ppFactory)
+  {
+    return CreateDXGIFactory2_Internal(dxgihooks.CreateDXGIFactory2SL(), Flags, riid, ppFactory);
+  }
+
+  static HRESULT GetDebugInterface_Internal(PFN_GET_DEBUG_INTERFACE getDebugFunc, REFIID riid,
+                                            void **ppDebug)
   {
     if(ppDebug)
       *ppDebug = NULL;
@@ -331,41 +370,62 @@ private:
 
     // IDXGIDebug and IDXGIDebug1 can come through here, but we don't need to wrap them.
 
-    if(dxgihooks.GetDebugInterface())
-      return dxgihooks.GetDebugInterface()(riid, ppDebug);
+    if(getDebugFunc)
+      return getDebugFunc(riid, ppDebug);
+    else
+      return E_NOINTERFACE;
+  }
+
+  static HRESULT WINAPI DXGIGetDebugInterface_hook(REFIID riid, void **ppDebug)
+  {
+    return GetDebugInterface_Internal(dxgihooks.GetDebugInterface(), riid, ppDebug);
+  }
+
+  static HRESULT WINAPI DXGIGetDebugInterface_SL_hook(REFIID riid, void **ppDebug)
+  {
+    return GetDebugInterface_Internal(dxgihooks.GetDebugInterfaceSL(), riid, ppDebug);
+  }
+
+  static HRESULT GetDebugInterface1_Internal(PFN_GET_DEBUG_INTERFACE1 getDebugFunc, UINT Flags,
+                                             REFIID riid, void **ppDebug)
+  {
+    if(ppDebug)
+      *ppDebug = NULL;
+
+    if(riid == __uuidof(IDXGraphicsAnalysis))
+    {
+      dxgihooks.m_RenderDocAnalysis.AddRef();
+      if(ppDebug)
+        *ppDebug = &dxgihooks.m_RenderDocAnalysis;
+      return S_OK;
+    }
+    if(riid == __uuidof(IDXGIInfoQueue))
+    {
+      RDCWARN(
+          "Returning a dummy IDXGIInfoQueue that does nothing. RenderDoc takes control of the "
+          "debug layer.");
+      dxgihooks.m_DummyInfoQueue.AddRef();
+      if(ppDebug)
+        *ppDebug = &dxgihooks.m_DummyInfoQueue;
+      return S_OK;
+    }
+
+    // IDXGIDebug and IDXGIDebug1 can come through here, but we don't need to wrap them.
+
+    if(getDebugFunc)
+      return getDebugFunc(Flags, riid, ppDebug);
     else
       return E_NOINTERFACE;
   }
 
   static HRESULT WINAPI DXGIGetDebugInterface1_hook(UINT Flags, REFIID riid, void **ppDebug)
   {
-    if(ppDebug)
-      *ppDebug = NULL;
+    return GetDebugInterface1_Internal(dxgihooks.GetDebugInterface1(), Flags, riid, ppDebug);
+  }
 
-    if(riid == __uuidof(IDXGraphicsAnalysis))
-    {
-      dxgihooks.m_RenderDocAnalysis.AddRef();
-      if(ppDebug)
-        *ppDebug = &dxgihooks.m_RenderDocAnalysis;
-      return S_OK;
-    }
-    if(riid == __uuidof(IDXGIInfoQueue))
-    {
-      RDCWARN(
-          "Returning a dummy IDXGIInfoQueue that does nothing. RenderDoc takes control of the "
-          "debug layer.");
-      dxgihooks.m_DummyInfoQueue.AddRef();
-      if(ppDebug)
-        *ppDebug = &dxgihooks.m_DummyInfoQueue;
-      return S_OK;
-    }
-
-    // IDXGIDebug and IDXGIDebug1 can come through here, but we don't need to wrap them.
-
-    if(dxgihooks.GetDebugInterface1())
-      return dxgihooks.GetDebugInterface1()(Flags, riid, ppDebug);
-    else
-      return E_NOINTERFACE;
+  static HRESULT WINAPI DXGIGetDebugInterface1_SL_hook(UINT Flags, REFIID riid, void **ppDebug)
+  {
+    return GetDebugInterface1_Internal(dxgihooks.GetDebugInterface1SL(), Flags, riid, ppDebug);
   }
 };
 
