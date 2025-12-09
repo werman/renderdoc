@@ -373,8 +373,11 @@ void GetDefaultFiles(const rdcstr &logBaseName, rdcstr &capture_filename, rdcstr
 rdcstr GetHomeFolderFilename()
 {
   PWSTR docsPath;
-  SHGetKnownFolderPath(FOLDERID_Documents, KF_FLAG_SIMPLE_IDLIST | KF_FLAG_DONT_UNEXPAND, NULL,
-                       &docsPath);
+  HRESULT hr = SHGetKnownFolderPath(FOLDERID_Documents,
+                                    KF_FLAG_SIMPLE_IDLIST | KF_FLAG_DONT_UNEXPAND, NULL, &docsPath);
+  if(docsPath == NULL || FAILED(hr))
+    return "";
+
   rdcwstr documents = docsPath;
   CoTaskMemFree(docsPath);
 
