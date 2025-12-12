@@ -204,6 +204,7 @@ TEST_CASE("Check CaptureOptions de/serialise to string", "[serialise]")
     for(uint32_t variant = 0; variant < (1 << ARRAY_COUNT(boolOpts)); variant++)
     {
       opts.delayForDebugger = delay;
+      opts.captureFileTemplate = "capture_file_template";
       for(size_t o = 0; o < ARRAY_COUNT(boolOpts); o++)
       {
         *boolOpts[o] = (variant & (1 << o)) != 0;

@@ -2137,6 +2137,8 @@ void RenderDoc::SetCaptureOptions(const CaptureOptions &opts)
 {
   m_Options = opts;
 
+  SetCaptureFileTemplate(opts.captureFileTemplate);
+
   LibraryHooks::OptionsUpdated();
 }
 

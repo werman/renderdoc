@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include "apidefs.h"
 #include "rdcstr.h"
@@ -45,8 +46,9 @@ struct CaptureOptions
   DOCUMENT("");
   CaptureOptions()
   {
-    // since we're reading from all bytes even padding etc in EncodeAsString, memset to 0
-    memset(this, 0, sizeof(CaptureOptions));
+    // since we're reading from all POD bytes including padding in EncodeAsString, memset them to 0.
+    // captureFileTemplate is non-POD and must be constructed normally.
+    memset(this, 0, offsetof(CaptureOptions, captureFileTemplate));
     allowVSync = true;
     allowFullscreen = true;
     apiValidation = false;
@@ -59,6 +61,7 @@ struct CaptureOptions
     captureAllCmdLists = false;
     debugOutputMute = true;
     softMemoryLimit = 0;
+    captureFileTemplate = "";
   }
 
   DOCUMENT(R"(Encode the current options to a string suitable for passing around between processes.
@@ -69,13 +72,24 @@ struct CaptureOptions
   inline rdcstr EncodeAsString() const
   {
     rdcstr optstr;
-    optstr.reserve(sizeof(CaptureOptions) * 2 + 1);
-    const byte *b = (const byte *)this;
-    for(size_t i = 0; i < sizeof(CaptureOptions); i++)
-    {
-      optstr.push_back(char('a' + ((b[i] >> 4) & 0xf)));
-      optstr.push_back(char('a' + ((b[i]) & 0xf)));
-    }
+    const size_t podSize = offsetof(CaptureOptions, captureFileTemplate);
+    optstr.reserve(podSize * 2 + captureFileTemplate.size() * 2 + sizeof(uint32_t) * 2);
+
+    auto encodeByte = [&optstr](byte b) {
+      optstr.push_back(char('a' + ((b >> 4) & 0xf)));
+      optstr.push_back(char('a' + (b & 0xf)));
+    };
+
+    auto encodeBytes = [&encodeByte](const byte *data, size_t count) {
+      for(size_t i = 0; i < count; i++)
+        encodeByte(data[i]);
+    };
+
+    encodeBytes((const byte *)this, podSize);
+
+    uint32_t strLen = (uint32_t)captureFileTemplate.size();
+    encodeBytes((const byte *)&strLen, sizeof(strLen));
+    encodeBytes((const byte *)captureFileTemplate.c_str(), strLen);
 
     return optstr;
   }
@@ -87,14 +101,36 @@ object in place.
 )");
   inline void DecodeFromString(const rdcstr &encoded)
   {
-    if(encoded.size() < sizeof(CaptureOptions))
+    const size_t podSize = offsetof(CaptureOptions, captureFileTemplate);
+
+    if(encoded.size() < podSize * 2 + sizeof(uint32_t) * 2)
       return;
 
-    // serialise from string with two chars per byte
-    byte *b = (byte *)this;
-    for(size_t i = 0; i < sizeof(CaptureOptions); i++)
-      *(b++) = byte(((byte(encoded[i * 2 + 0] - 'a') & 0xf) << 4) |
-                    (byte(encoded[i * 2 + 1] - 'a') & 0xf));
+    size_t offset = 0;
+
+    auto decodeByte = [&encoded, &offset]() {
+      byte b = byte(((byte(encoded[offset + 0] - 'a') & 0xf) << 4) |
+                    (byte(encoded[offset + 1] - 'a') & 0xf));
+      offset += 2;
+      return b;
+    };
+
+    auto decodeBytes = [&decodeByte](byte *data, size_t count) {
+      for(size_t i = 0; i < count; i++)
+        data[i] = decodeByte();
+    };
+
+    decodeBytes((byte *)this, podSize);
+
+    uint32_t strLen = 0;
+    decodeBytes((byte *)&strLen, sizeof(strLen));
+
+    if(encoded.size() < offset + strLen * 2)
+      return;
+
+    captureFileTemplate.resize(strLen);
+    for(size_t i = 0; i < strLen; i++)
+      captureFileTemplate[i] = (char)decodeByte();
   }
 
   DOCUMENT(R"(Allow the application to enable vsync.
@@ -263,6 +299,14 @@ Default - 0 Megabytes
 :type: int
 )");
   uint32_t softMemoryLimit;
+
+  DOCUMENT(R"(Specify a template for the capture file name.
+
+Default - empty string
+
+:type: str
+)");
+  rdcstr captureFileTemplate;
 };
 
 DECLARE_REFLECTION_STRUCT(CaptureOptions);

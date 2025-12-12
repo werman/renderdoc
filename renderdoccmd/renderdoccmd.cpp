@@ -1652,6 +1652,8 @@ int renderdoccmd(GlobalEnvironment &env, std::vector<std::string> &argv)
       cmd.add<int>("opt-soft-memory-limit", 0,
                    "Capturing Option: Specify a soft memory limit to try to respect.", false, 0,
                    cmdline::range(0, 10000));
+      cmd.add<std::string>("opt-capture-file-template", 0,
+                           "Capturing Option: Specify a template for the capture file name.", false);
     }
 
     cmd.parse_check(argv, true);
@@ -1680,6 +1682,8 @@ int renderdoccmd(GlobalEnvironment &env, std::vector<std::string> &argv)
         opts.refAllResources = true;
       if(cmd.exist("opt-capture-all-cmd-lists"))
         opts.captureAllCmdLists = true;
+      if(cmd.exist("opt-capture-file-template"))
+        opts.captureFileTemplate = cmd.get<std::string>("opt-capture-file-template").c_str();
 
       opts.delayForDebugger = (uint32_t)cmd.get<int>("opt-delay-for-debugger");
       opts.softMemoryLimit = (uint32_t)cmd.get<int>("opt-soft-memory-limit");
