@@ -44,6 +44,16 @@ HMODULE GetD3DCompiler()
   if(ret != NULL)
     return ret;
 
+  static const char *(CDECL *pwine_get_version)(void);
+  HMODULE hntdll = GetModuleHandleA("ntdll.dll");
+  pwine_get_version = (const char *(CDECL *)(void))GetProcAddress(hntdll, "wine_get_version");
+
+  // In case of wine it's much safer just to use our own d3dcompiler_47
+  if (pwine_get_version) {
+    ret = GetLocalD3DCompiler();
+    return ret;
+  }
+
   // during replay, try to load our local one to get the newest possible.
   if(RenderDoc::Inst().IsReplayApp())
   {
