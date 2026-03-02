@@ -123,6 +123,7 @@ public:
 
   // Load profile from JSON file
   bool LoadProfile(const std::string &filename);
+  bool IsProfileLoaded() const { return m_profile_loaded; }
 
   HRESULT CheckFeatureSupport(ID3D12Device *pDevice, D3D12_FEATURE Feature,
                               void *pFeatureSupportData, UINT FeatureSupportDataSize) const;

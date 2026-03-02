@@ -25,6 +25,13 @@
 #include "d3d12_device.h"
 #include "driver/dxgi/dxgi_common.h"
 #include "d3d12_resources.h"
+#include "core/settings.h"
+
+RDOC_CONFIG(bool, D3D12_Hack_DoNotRemapCommitResources, false,
+  "Avoid optimization that remaps committed resources to default heaps. Uses less VRAM.");
+RDOC_CONFIG(bool, D3D12_Hack_ImageCompatibility, false,
+  "Allocate separate memory for resources if the memory requirements are not met.");
+
 
 bool WrappedID3D12Device::Serialise_CreateResource(
     D3D12Chunk chunkType, ID3D12Heap *pHeap, UINT64 HeapOffset, D3D12_HEAP_PROPERTIES &props,
@@ -54,7 +61,7 @@ bool WrappedID3D12Device::Serialise_CreateResource(
     // place large resources in local memory so that initial contents and maps can
     // be cached and copied on the GPU instead of memcpy'd from the CPU every time.
     // smaller resources it's better to just leave them as upload and map into them
-    if(desc.Width >= 1024 * 1024)
+    if(desc.Width >= 1024 * 1024 && !D3D12_Hack_DoNotRemapCommitResources())
     {
       RDCLOG("Remapping committed resource %s from upload to default for efficient replay",
              ToStr(pResource).c_str());
@@ -136,6 +143,9 @@ bool WrappedID3D12Device::Serialise_CreateResource(
 
   ID3D12Resource *ret = NULL;
   HRESULT hr = S_OK;
+  ID3D12Heap *wrappedHeap = pHeap;
+  UINT64 wrappedHeapOffset = HeapOffset;
+  bool usedCommittedFallback = false;
 
   // dispatch actual creation
   switch(chunkType)
@@ -216,10 +226,74 @@ bool WrappedID3D12Device::Serialise_CreateResource(
 
   if(FAILED(hr))
   {
-    SET_ERROR_RESULT(m_FailedReplayResult, ResultCode::APIReplayFailed,
-                     "Failed recreating %s, HRESULT: %s", ToStr(chunkType).c_str(),
-                     ToStr(hr).c_str());
-    return false;
+    if(D3D12_Hack_ImageCompatibility() && pHeap &&
+       (chunkType == D3D12Chunk::Device_CreatePlacedResource ||
+        chunkType == D3D12Chunk::Device_CreatePlacedResource1 ||
+        chunkType == D3D12Chunk::Device_CreatePlacedResource2))
+    {
+      D3D12_HEAP_DESC heapDesc = pHeap->GetDesc();
+      D3D12_HEAP_PROPERTIES committedProps = heapDesc.Properties;
+      D3D12_HEAP_FLAGS committedFlags = heapDesc.Flags;
+
+      // mirror replay sanitization for heap flags
+      committedFlags &= ~D3D12_HEAP_FLAG_CREATE_NOT_RESIDENT;
+      committedFlags &= ~D3D12_HEAP_FLAG_ALLOW_DISPLAY;
+
+      RDCWARN("CreatePlacedResource failed with %s, retrying as committed for replay compatibility",
+              ToStr(hr).c_str());
+
+      if(desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
+      {
+        RDCWARN("Placed buffer recreated as committed; initial contents may be lost");
+      }
+
+      switch(chunkType)
+      {
+        case D3D12Chunk::Device_CreatePlacedResource:
+        {
+          hr = m_pDevice->CreateCommittedResource(
+              &committedProps, committedFlags, &desc0, InitialLayout.ToStates(),
+              pOptimizedClearValue, __uuidof(ID3D12Resource), (void **)&ret);
+          break;
+        }
+        case D3D12Chunk::Device_CreatePlacedResource1:
+        {
+          hr = m_pDevice8->CreateCommittedResource2(
+              &committedProps, committedFlags, &desc, InitialLayout.ToStates(),
+              pOptimizedClearValue, NULL, __uuidof(ID3D12Resource), (void **)&ret);
+          break;
+        }
+        case D3D12Chunk::Device_CreatePlacedResource2:
+        {
+          hr = m_pDevice10->CreateCommittedResource3(
+              &committedProps, committedFlags, &desc, InitialLayout.ToLayout(),
+              pOptimizedClearValue, NULL, (UINT)CastableFormats.size(), CastableFormats.data(),
+              __uuidof(ID3D12Resource), (void **)&ret);
+          break;
+        }
+        default: break;
+      }
+
+      if(SUCCEEDED(hr))
+      {
+        usedCommittedFallback = true;
+        wrappedHeap = NULL;
+        wrappedHeapOffset = 0;
+      } else {
+        SET_ERROR_RESULT(m_FailedReplayResult, ResultCode::APIReplayFailed,
+                         "Failed recreating %s with fallback to committed, HRESULT: %s", ToStr(chunkType).c_str(),
+                         ToStr(hr).c_str());
+        return false;
+      }
+    }
+
+    if(FAILED(hr))
+    {
+      SET_ERROR_RESULT(m_FailedReplayResult, ResultCode::APIReplayFailed,
+                       "Failed recreating %s, HRESULT: %s", ToStr(chunkType).c_str(),
+                       ToStr(hr).c_str());
+      return false;
+    }
   }
 
   const char *ResourceTypeName = "?";
@@ -245,10 +319,13 @@ bool WrappedID3D12Device::Serialise_CreateResource(
     }
   }
 
+  if(usedCommittedFallback)
+    ResourceTypeName = "Committed (placed fallback)";
+
   SetObjName(ret, StringFormat::Fmt("%s Resource %s %s", ResourceTypeName,
                                     ToStr(desc.Dimension).c_str(), ToStr(pResource).c_str()));
 
-  ret = new WrappedID3D12Resource(pResource, ret, pHeap, HeapOffset, this, gpuAddress);
+  ret = new WrappedID3D12Resource(pResource, ret, wrappedHeap, wrappedHeapOffset, this, gpuAddress);
 
   switch(chunkType)
   {
@@ -314,7 +391,8 @@ bool WrappedID3D12Device::Serialise_CreateResource(
 
   AddResource(pResource, type, prefix);
   // ignored if there's no heap
-  DerivedResource(pHeap, pResource);
+  if(!usedCommittedFallback)
+    DerivedResource(pHeap, pResource);
 
   return true;
 }

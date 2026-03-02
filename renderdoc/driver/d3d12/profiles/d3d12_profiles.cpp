@@ -726,6 +726,16 @@ void ApplyAllocTuning(D3D12_RESOURCE_ALLOCATION_INFO &info, UINT numResourceDesc
         multiplier = desc.DepthOrArraySize;
       }
 
+      // if(desc.MipLevels > 1)
+      // {
+      //   baseSize *= 2;
+      // }
+
+      // if (desc.Width <= 64u || desc.Height <= 64u)
+      // {
+      //   baseSize *= std::max(desc.MipLevels, (UINT16)4u);
+      // }
+
       // Apply tuning to base size (either single slice or whole texture)
       UINT64 tunedSize = std::max((UINT64)(baseSize * image_alloc_size_multiplier),
                                   baseSize + min_image_alloc_size_increase);
@@ -795,6 +805,16 @@ void ApplyAllocTuning1(D3D12_RESOURCE_ALLOCATION_INFO &info, UINT numResourceDes
         baseSize = sliceInfo.SizeInBytes;
         multiplier = pResourceDescs[i].DepthOrArraySize;
       }
+
+      // if(pResourceDescs[i].MipLevels > 1)
+      // {
+      //   baseSize *= 2;
+      // }
+
+      // if(pResourceDescs[i].Width <= 64u || pResourceDescs[i].Height <= 64u)
+      // {
+      //   baseSize *= std::max(pResourceDescs[i].MipLevels, (UINT16)4u);
+      // }
 
       // Apply tuning to base size (either single slice or whole texture)
       UINT64 tunedSize = std::max((UINT64)(baseSize * image_alloc_size_multiplier),

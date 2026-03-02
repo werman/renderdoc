@@ -602,8 +602,15 @@ WrappedID3D12Device::WrappedID3D12Device(ID3D12Device *realDevice, D3D12InitPara
 
   // Load profile from Windows user documents folder
   rdcstr documentsPath = FileIO::GetHomeFolderFilename();
-  rdcstr profilePath = documentsPath + "\\d3d12_profiles.json";
+  rdcstr profilePath = documentsPath + "/d3d12_profiles.json";
   m_d3d12profile.LoadProfile(profilePath.c_str());
+  if(!m_d3d12profile.IsProfileLoaded())
+  {
+    rdcstr file;
+    FileIO::GetLibraryFilename(file);
+    profilePath = get_dirname(file) + "/d3d12_profiles.json";
+    m_d3d12profile.LoadProfile(profilePath.c_str());
+  }
 
   RDCEraseEl(m_D3D12Opts);
   RDCEraseEl(m_D3D12Opts1);
