@@ -24,6 +24,7 @@
  ******************************************************************************/
 
 #include "d3d11_context.h"
+#include "core/settings.h"
 #include "driver/dx/official/dxgi1_3.h"
 #include "strings/string_utils.h"
 #include "tinyfiledialogs/tinyfiledialogs.h"
@@ -38,6 +39,9 @@
 
 uint32_t NullCBOffsets[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
 uint32_t NullCBCounts[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
+
+RDOC_CONFIG(bool, D3D11_ExactMapWriteNoOverwrite, false,
+            "Preserve D3D11_MAP_WRITE_NO_OVERWRITE Map/Unmap behavior during capture and replay.");
 
 #pragma region D3DPERF
 
@@ -7813,11 +7817,16 @@ HRESULT WrappedID3D11DeviceContext::Map(ID3D11Resource *pResource, UINT Subresou
     return m_pRealContext->Map(unwrapped, Subresource, MapType, MapFlags, pMappedResource);
   }
 
-  // can't promise no-overwrite as we're going to blat the whole buffer!
+  const bool exactNoOverwrite = D3D11_ExactMapWriteNoOverwrite();
+
+  // If exact no-overwrite handling isn't enabled, preserve the existing translation because we may
+  // end up writing back the whole shadow buffer on Unmap.
   HRESULT ret;
   SERIALISE_TIME_CALL(ret = m_pRealContext->Map(
                           UnwrapResource(pResource), Subresource,
-                          MapType == D3D11_MAP_WRITE_NO_OVERWRITE ? D3D11_MAP_WRITE_DISCARD : MapType,
+                          (!exactNoOverwrite && MapType == D3D11_MAP_WRITE_NO_OVERWRITE)
+                              ? D3D11_MAP_WRITE_DISCARD
+                              : MapType,
                           MapFlags, pMappedResource));
 
   if(SUCCEEDED(ret) && IsCaptureMode(m_State))
@@ -7900,6 +7909,8 @@ bool WrappedID3D11DeviceContext::Serialise_Unmap(SerialiserType &ser, ID3D11Reso
   // handle book-keeping during capture mode
   if(ser.IsWriting())
   {
+    const bool exactNoOverwrite = D3D11_ExactMapWriteNoOverwrite();
+
     record = m_pDevice->GetResourceManager()->GetResourceRecord(GetIDForDeviceChild(pResource));
     RDCASSERT(record);
 
@@ -7959,13 +7970,10 @@ bool WrappedID3D11DeviceContext::Serialise_Unmap(SerialiserType &ser, ID3D11Reso
       }
     }
 
-    // copy from the intercept buffer that the user wrote into, into D3D's real pointer
-    intercept.CopyToD3D();
-
-    // while actively capturing, on large buffers being updated, try to locate the range of data
-    // being
-    // updated and update the diffStart/diffEnd/len variables
-    if(IsActiveCapturing(m_State) && len > 512 && intercept.MapType != D3D11_MAP_WRITE_DISCARD)
+    // While actively capturing, try to locate the exact written range for WRITE_NO_OVERWRITE so we
+    // can preserve the API's partial update semantics when requested.
+    if(IsActiveCapturing(m_State) && intercept.MapType != D3D11_MAP_WRITE_DISCARD &&
+       ((len > 512) || (exactNoOverwrite && intercept.MapType == D3D11_MAP_WRITE_NO_OVERWRITE)))
     {
       size_t s = diffStart;
       size_t e = diffEnd;
@@ -8015,6 +8023,17 @@ bool WrappedID3D11DeviceContext::Serialise_Unmap(SerialiserType &ser, ID3D11Reso
 
       // update the data pointer to be rebased to the start of the diff data.
       MapWrittenData += diffStart;
+    }
+
+    // copy from the intercept buffer that the user wrote into, into D3D's real pointer
+    if(exactNoOverwrite && intercept.MapType == D3D11_MAP_WRITE_NO_OVERWRITE)
+    {
+      if(diffStart < diffEnd)
+        intercept.CopyToD3D(diffStart, diffEnd);
+    }
+    else
+    {
+      intercept.CopyToD3D();
     }
 
     // update shadow stores for future diff'ing
@@ -8075,7 +8094,7 @@ bool WrappedID3D11DeviceContext::Serialise_Unmap(SerialiserType &ser, ID3D11Reso
     {
       // do nothing
     }
-    else if(intercept.MapType == D3D11_MAP_WRITE_NO_OVERWRITE)
+    else if(intercept.MapType == D3D11_MAP_WRITE_NO_OVERWRITE && !D3D11_ExactMapWriteNoOverwrite())
     {
       ID3D11Buffer *mapContents = NULL;
 
