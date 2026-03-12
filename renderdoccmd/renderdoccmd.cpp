@@ -71,7 +71,7 @@ rdcarray<rdcstr> convertArgs(const std::vector<std::string> &args)
 }
 
 void DisplayRendererPreview(IReplayController *renderer, uint32_t width, uint32_t height,
-                            uint32_t numLoops)
+                            uint32_t numLoops, float displayScale, bool useVRHeuristic)
 {
   if(renderer == NULL)
     return;
@@ -88,7 +88,7 @@ void DisplayRendererPreview(IReplayController *renderer, uint32_t width, uint32_
   d.flipY = false;
   d.rangeMin = 0.0f;
   d.rangeMax = 1.0f;
-  d.scale = 1.0f;
+  d.scale = displayScale;
   d.xOffset = 0.0f;
   d.yOffset = 0.0f;
   d.rawOutput = false;
@@ -106,19 +106,88 @@ void DisplayRendererPreview(IReplayController *renderer, uint32_t width, uint32_
 
   rdcarray<ActionDescription> actions = renderer->GetRootActions();
 
-  ActionDescription *last = NULL;
+  auto findTexture = [&texs](ResourceId id) -> const TextureDescription * {
+    for(const TextureDescription &desc : texs)
+    {
+      if(desc.resourceId == id)
+        return &desc;
+    }
 
-  if(!actions.empty())
-    last = &actions.back();
+    return NULL;
+  };
 
-  while(last && !last->children.empty())
-    last = &last->children.back();
+  auto isVRPreviewCandidate = [](const TextureDescription &desc) -> bool {
+    if(desc.resourceId == ResourceId() || desc.width == 0 || desc.height == 0)
+      return false;
 
-  if(last && last->flags & ActionFlags::Present)
+    if(desc.format.compType == CompType::Depth)
+      return false;
+
+    const bool doubleWide = (desc.width == 2 * desc.height);
+    const bool twoLayerSquare = (desc.arraysize == 2 && desc.width == desc.height);
+
+    return doubleWide || twoLayerSquare;
+  };
+
+  if(useVRHeuristic)
   {
-    ResourceId id = last->copyDestination;
-    if(id != ResourceId())
-      d.resourceId = id;
+    ActionDescription *last = NULL;
+
+    if(!actions.empty())
+      last = &actions.back();
+
+    while(last && !last->children.empty())
+      last = &last->children.back();
+
+    auto findVRTextureInAction =
+        [&findTexture, &isVRPreviewCandidate](const ActionDescription &action) -> ResourceId {
+      for(const ResourceId output : action.outputs)
+      {
+        if(output == ResourceId())
+          continue;
+
+        const TextureDescription *desc = findTexture(output);
+        if(desc && isVRPreviewCandidate(*desc))
+          return output;
+      }
+
+      if(action.copyDestination != ResourceId())
+      {
+        const TextureDescription *desc = findTexture(action.copyDestination);
+        if(desc && isVRPreviewCandidate(*desc))
+          return action.copyDestination;
+      }
+
+      return ResourceId();
+    };
+
+    for(const ActionDescription *action = last; action != NULL; action = action->previous)
+    {
+      ResourceId vrPreviewTex = findVRTextureInAction(*action);
+      if(vrPreviewTex != ResourceId())
+      {
+        d.resourceId = vrPreviewTex;
+        break;
+      }
+    }
+  }
+
+  if(d.resourceId == ResourceId())
+  {
+    ActionDescription *last = NULL;
+
+    if(!actions.empty())
+      last = &actions.back();
+
+    while(last && !last->children.empty())
+      last = &last->children.back();
+
+    if(last && last->flags & ActionFlags::Present)
+    {
+      ResourceId id = last->copyDestination;
+      if(id != ResourceId())
+        d.resourceId = id;
+    }
   }
 
   DisplayRendererPreview(renderer, d, width, height, numLoops);
@@ -530,6 +599,8 @@ private:
   uint32_t width = 0;
   uint32_t height = 0;
   uint32_t loops = 0;
+  float scale = 1.0f;
+  bool vr = false;
 
 public:
   ReplayCommand() : Command() {}
@@ -540,6 +611,10 @@ public:
     parser.add<uint32_t>("height", 'h', "The preview window height.", false, 720);
     parser.add<uint32_t>("loops", 'l', "How many times to loop the replay, or 0 for indefinite.",
                          false, 0);
+    parser.add<std::string>("scale", 's',
+                            "Scale of displayed output for replay preview.", false,
+                            "1.0");
+    parser.add("vr", 0, "Use VR texture heuristic when choosing preview texture.");
     parser.add<std::string>("remote-host", 0,
                             "Instead of replaying locally, replay on this host over the network.",
                             false);
@@ -573,6 +648,17 @@ public:
     width = parser.get<uint32_t>("width");
     height = parser.get<uint32_t>("height");
     loops = parser.get<uint32_t>("loops");
+    vr = parser.exist("vr");
+    {
+      std::stringstream ss(parser.get<std::string>("scale"));
+      if(!(ss >> scale) || !ss.eof() || scale < 0.01f || scale > 100.0f)
+      {
+        std::cerr << "Error: --scale must be a float in [0.01, 100.0]." << std::endl
+                  << std::endl
+                  << parser.usage();
+        return false;
+      }
+    }
 
     return true;
   }
@@ -603,7 +689,7 @@ public:
 
       if(result.OK())
       {
-        DisplayRendererPreview(renderer, width, height, loops);
+        DisplayRendererPreview(renderer, width, height, loops, scale, vr);
 
         remote->CloseCapture(renderer);
       }
@@ -637,7 +723,7 @@ public:
 
       if(result.OK())
       {
-        DisplayRendererPreview(renderer, width, height, loops);
+        DisplayRendererPreview(renderer, width, height, loops, scale, vr);
 
         renderer->Shutdown();
       }

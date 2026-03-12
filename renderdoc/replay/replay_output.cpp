@@ -915,6 +915,97 @@ void ReplayOutput::DisplayTex()
   TextureDisplay texDisplay = m_RenderData.texDisplay;
   texDisplay.rawOutput = false;
 
+  struct SliceGridInfo
+  {
+    uint32_t numSlices = 1;
+    uint32_t mipWidth = 1;
+    uint32_t mipHeight = 1;
+  };
+
+  auto findTextureDesc = [this](ResourceId id) -> const TextureDescription *
+  {
+    for(const TextureDescription &tex : m_pController->m_Textures)
+    {
+      if(tex.resourceId == id)
+        return &tex;
+    }
+
+    return NULL;
+  };
+
+  auto getSliceGridInfo = [&findTextureDesc](ResourceId primaryId, ResourceId fallbackId,
+                                             uint32_t mip) -> SliceGridInfo
+  {
+    SliceGridInfo ret;
+
+    const TextureDescription *texDesc = findTextureDesc(primaryId);
+    if(texDesc == NULL && fallbackId != ResourceId() && fallbackId != primaryId)
+      texDesc = findTextureDesc(fallbackId);
+
+    if(texDesc == NULL)
+      return ret;
+
+    ret.mipWidth = RDCMAX(1U, texDesc->width >> mip);
+    ret.mipHeight = RDCMAX(1U, texDesc->height >> mip);
+
+    if(texDesc->type == TextureType::Texture3D)
+      ret.numSlices = RDCMAX(1U, texDesc->depth >> mip);
+    else
+      ret.numSlices = RDCMAX(1U, texDesc->arraysize);
+
+    return ret;
+  };
+
+  auto renderTextureWithSliceGrid = [this](const TextureDisplay &srcDisplay,
+                                           const SliceGridInfo &gridInfo)
+  {
+    const uint32_t numSlices = gridInfo.numSlices;
+
+    if(numSlices <= 1)
+    {
+      m_pDevice->RenderTexture(srcDisplay);
+      m_pController->FatalErrorCheck();
+      return;
+    }
+
+    uint32_t gridCols = 1;
+    while(gridCols * gridCols < numSlices)
+      gridCols++;
+
+    const uint32_t gridRows = (numSlices + gridCols - 1) / gridCols;
+    const float gridScale = RDCMIN(1.0f / float(gridCols), 1.0f / float(gridRows));
+    float displayScale = srcDisplay.scale;
+    if(displayScale <= 0.0f)
+    {
+      const float xscale = float(m_Width) / float(gridInfo.mipWidth);
+      const float yscale = float(m_Height) / float(gridInfo.mipHeight);
+      displayScale = RDCMIN(xscale, yscale);
+    }
+    const float tileWidth = float(gridInfo.mipWidth) * displayScale * gridScale;
+    const float tileHeight = float(gridInfo.mipHeight) * displayScale * gridScale;
+    const float gridOriginX = srcDisplay.xOffset;
+    const float gridOriginY = 0.0f;
+
+    TextureDisplay sliceDisplay = srcDisplay;
+    sliceDisplay.scale = displayScale * gridScale;
+
+    for(uint32_t slice = 0; slice < numSlices; slice++)
+    {
+      const uint32_t col = slice % gridCols;
+      const uint32_t row = slice / gridCols;
+
+      const float tileOriginX = gridOriginX + float(col) * tileWidth;
+      const float tileOriginY = gridOriginY + float(row) * tileHeight;
+
+      sliceDisplay.xOffset = tileOriginX;
+      sliceDisplay.yOffset = tileOriginY;
+      sliceDisplay.subresource.slice = slice;
+
+      m_pDevice->RenderTexture(sliceDisplay);
+      m_pController->FatalErrorCheck();
+    }
+  };
+
   if(m_RenderData.texDisplay.overlay != DebugOverlay::NoOverlay && action)
   {
     if(m_OverlayDirty)
@@ -961,8 +1052,10 @@ void ReplayOutput::DisplayTex()
     texDisplay.overlay = DebugOverlay::NoOverlay;
   }
 
-  m_pDevice->RenderTexture(texDisplay);
-  m_pController->FatalErrorCheck();
+  const SliceGridInfo baseGridInfo =
+      getSliceGridInfo(texDisplay.resourceId, m_RenderData.texDisplay.resourceId,
+                       texDisplay.subresource.mip);
+  renderTextureWithSliceGrid(texDisplay, baseGridInfo);
 
   ResourceId id = m_RenderData.texDisplay.resourceId;
 
@@ -982,9 +1075,9 @@ void ReplayOutput::DisplayTex()
     texDisplay.rangeMax = 1.0f;
     texDisplay.linearDisplayAsGamma = false;
     texDisplay.typeCast = CompType::Typeless;
-
-    m_pDevice->RenderTexture(texDisplay);
-    m_pController->FatalErrorCheck();
+    const SliceGridInfo overlayGridInfo =
+        getSliceGridInfo(texDisplay.resourceId, m_OverlayResourceId, texDisplay.subresource.mip);
+    renderTextureWithSliceGrid(texDisplay, overlayGridInfo);
   }
 }
 
