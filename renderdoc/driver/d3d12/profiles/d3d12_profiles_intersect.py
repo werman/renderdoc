@@ -9,88 +9,106 @@ represents the subset of capabilities that both devices support.
 import json
 import sys
 import argparse
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, Union
+
+
+# Most numeric feature values are limits or tiers, where the intersection is the
+# lower value. These fields are either lower bounds or bitfields and need
+# different handling.
+MAX_FIELDS = {
+    "WaveLaneCountMin",
+    "MinimumABISupportVersion",
+}
+
+BITMASK_FIELDS = {
+    "MinPrecisionSupport",
+    "SupportFlags",
+    "WriteBufferImmediateSupportFlags",
+    "SupportedSampleCountsWithNoOutputs",
+    "Flags",
+}
+
+# Inputs to CheckFeatureSupport must not be treated as capabilities. D3d12info
+# currently serialises NodeIndex; preserve it when making a conservative value.
+INPUT_FIELDS = {
+    "NodeIndex",
+    "CommandListType",
+    "Priority",
+    "Format",
+    "Dimension",
+    "DestHeapProperties",
+    "Layout",
+}
+
+
+def _parse_numeric_string(value: Any):
+    if not isinstance(value, str):
+        return None
+    try:
+        return int(value, 0)
+    except ValueError:
+        return None
+
+
+def _format_like(value: int, original: Any) -> Any:
+    return str(value) if isinstance(original, str) else value
 
 
 def intersect_numeric_value(field: str, val1: Union[int, float],
                             val2: Union[int, float]) -> Union[int, float]:
     """Intersect a numeric field."""
-    if field == "WaveLaneCountMin":
+    if field in BITMASK_FIELDS and isinstance(val1, int) and isinstance(val2, int):
+        return val1 & val2
+    if field in MAX_FIELDS:
         return max(val1, val2)
     return min(val1, val2)
 
 
-def intersect_numeric_fields(obj1: Dict[str, Any], obj2: Dict[str, Any],
-                             result: Dict[str, Any], field: str) -> None:
-    """Intersect a numeric field."""
-    if field in obj1 and field in obj2:
-        val1 = obj1[field]
-        val2 = obj2[field]
-        if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
-            result[field] = intersect_numeric_value(field, val1, val2)
-        else:
-            # If types don't match, keep the first one
-            result[field] = val1
-    elif field in obj1:
-        result[field] = obj1[field]
-    elif field in obj2:
-        result[field] = obj2[field]
+def conservative_value(field: str, value: Any) -> Any:
+    """Return a value that does not claim support missing from one profile."""
+    if field in INPUT_FIELDS:
+        return value
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return 0
+    if isinstance(value, str):
+        return "0" if _parse_numeric_string(value) is not None else ""
+    if isinstance(value, dict):
+        return {key: conservative_value(key, child) for key, child in value.items()}
+    if isinstance(value, list):
+        return []
+    return value
 
 
-def intersect_boolean_fields(obj1: Dict[str, Any], obj2: Dict[str, Any],
-                             result: Dict[str, Any], field: str) -> None:
-    """Intersect a boolean field by taking AND (both must be true)."""
-    if field in obj1 and field in obj2:
-        result[field] = obj1[field] and obj2[field]
-    elif field in obj1:
-        result[field] = False  # If missing in one, assume false
-    elif field in obj2:
-        result[field] = False  # If missing in one, assume false
+def intersect_value(field: str, val1: Any, val2: Any) -> Any:
+    """Intersect two values from the same feature-data field."""
+    if isinstance(val1, bool) or isinstance(val2, bool):
+        if isinstance(val1, bool) and isinstance(val2, bool):
+            return val1 and val2
+        return False
 
+    if isinstance(val1, (int, float)) and isinstance(val2, (int, float)):
+        return intersect_numeric_value(field, val1, val2)
 
-def intersect_feature_data(feature_name: str, adapter1: Dict[str, Any],
-                           adapter2: Dict[str, Any]) -> Dict[str, Any]:
-    """Intersect a D3D12 feature data structure."""
-    if feature_name not in adapter1 and feature_name not in adapter2:
-        return {}
+    numeric1 = _parse_numeric_string(val1)
+    numeric2 = _parse_numeric_string(val2)
+    if numeric1 is not None and numeric2 is not None:
+        result = intersect_numeric_value(field, numeric1, numeric2)
+        return _format_like(result, val1)
 
-    if feature_name not in adapter1:
-        return adapter2[feature_name].copy()
-    if feature_name not in adapter2:
-        return adapter1[feature_name].copy()
+    if isinstance(val1, dict) and isinstance(val2, dict):
+        return intersect_dict(val1, val2)
 
-    obj1 = adapter1[feature_name]
-    obj2 = adapter2[feature_name]
-    result = {}
+    if isinstance(val1, list) and isinstance(val2, list):
+        return [item for item in val1 if item in val2]
 
-    # Process all fields
-    all_fields = set(obj1.keys()) | set(obj2.keys())
+    # Non-numeric strings (notably shader-cache adapter families) are only
+    # meaningful when equal. An empty string describes no shared value.
+    if isinstance(val1, str) and isinstance(val2, str):
+        return val1 if val1 == val2 else ""
 
-    for field in all_fields:
-        val1 = obj1.get(field)
-        val2 = obj2.get(field)
-
-        # Determine field type and intersect accordingly
-        if isinstance(val1, bool) or isinstance(val2, bool):
-            # Boolean field - use AND
-            intersect_boolean_fields(obj1, obj2, result, field)
-        elif isinstance(val1, (int, float)) or isinstance(val2, (int, float)):
-            # Numeric field - use field-specific intersection
-            intersect_numeric_fields(obj1, obj2, result, field)
-        elif isinstance(val1, str) or isinstance(val2, str):
-            # String field - keep from first profile
-            result[field] = obj1.get(field, obj2.get(field))
-        elif isinstance(val1, dict) or isinstance(val2, dict):
-            # Nested dict - recursively intersect
-            if field in obj1 and field in obj2:
-                result[field] = intersect_dict(obj1[field], obj2[field])
-            else:
-                result[field] = obj1.get(field, obj2.get(field))
-        else:
-            # Other types - keep from first profile
-            result[field] = obj1.get(field, obj2.get(field))
-
-    return result
+    return val1 if val1 == val2 else conservative_value(field, val1)
 
 
 def intersect_dict(dict1: Dict[str, Any], dict2: Dict[str, Any]) -> Dict[str, Any]:
@@ -100,17 +118,41 @@ def intersect_dict(dict1: Dict[str, Any], dict2: Dict[str, Any]) -> Dict[str, An
 
     for key in all_keys:
         if key not in dict1:
-            result[key] = dict2[key]
+            result[key] = conservative_value(key, dict2[key])
         elif key not in dict2:
-            result[key] = dict1[key]
-        elif isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
-            result[key] = intersect_dict(dict1[key], dict2[key])
-        elif isinstance(dict1[key], (int, float)) and isinstance(dict2[key], (int, float)):
-            result[key] = intersect_numeric_value(key, dict1[key], dict2[key])
-        elif isinstance(dict1[key], bool) and isinstance(dict2[key], bool):
-            result[key] = dict1[key] and dict2[key]
+            result[key] = conservative_value(key, dict1[key])
         else:
-            result[key] = dict1[key]
+            result[key] = intersect_value(key, dict1[key], dict2[key])
+
+    return result
+
+
+def intersect_feature_data(feature_name: str, adapter1: Dict[str, Any],
+                           adapter2: Dict[str, Any]) -> Dict[str, Any]:
+    """Intersect a D3D12 feature data structure."""
+    if feature_name not in adapter1 and feature_name not in adapter2:
+        return {}
+    if feature_name not in adapter1:
+        return conservative_value(feature_name, adapter2[feature_name])
+    if feature_name not in adapter2:
+        return conservative_value(feature_name, adapter1[feature_name])
+
+    obj1 = adapter1[feature_name]
+    obj2 = adapter2[feature_name]
+    if feature_name == "D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT":
+        if obj1.get("szAdapterFamily") != obj2.get("szAdapterFamily"):
+            return conservative_value(feature_name, obj1)
+
+    result = intersect_dict(obj1, obj2)
+    if feature_name == "D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT":
+        minimum = _parse_numeric_string(result.get("MinimumABISupportVersion"))
+        maximum = _parse_numeric_string(result.get("MaximumABISupportVersion"))
+        if minimum is None and isinstance(result.get("MinimumABISupportVersion"), int):
+            minimum = result["MinimumABISupportVersion"]
+        if maximum is None and isinstance(result.get("MaximumABISupportVersion"), int):
+            maximum = result["MaximumABISupportVersion"]
+        if minimum is not None and maximum is not None and minimum > maximum:
+            return conservative_value(feature_name, result)
 
     return result
 
@@ -175,11 +217,11 @@ def intersect_formats(adapter1: Dict[str, Any], adapter2: Dict[str, Any]) -> Dic
         if "Support2" in fmt1 and "Support2" in fmt2:
             fmt_result["Support2"] = fmt1["Support2"] & fmt2["Support2"]
 
-        if "PlaneCount" in fmt1:
+        if "PlaneCount" in fmt1 and "PlaneCount" in fmt2:
             fmt_result["PlaneCount"] = min(fmt1["PlaneCount"], fmt2["PlaneCount"])
 
         # Intersect MultisampleQualityLevels
-        if "MultisampleQualityLevels" in fmt1:
+        if "MultisampleQualityLevels" in fmt1 and "MultisampleQualityLevels" in fmt2:
             ms1 = fmt1["MultisampleQualityLevels"]
             ms2 = fmt2["MultisampleQualityLevels"]
             ms_result = {}
@@ -237,37 +279,17 @@ def intersect_profiles(profile1: Dict[str, Any], profile2: Dict[str, Any]) -> Di
             key != "Formats"):
             intersection_adapter[key] = adapter1[key]
 
-    # Intersect D3D12_FEATURE_DATA_D3D12_OPTIONS through OPTIONS21
-    for i in range(22):  # OPTIONS through OPTIONS21
-        if i == 0:
-            feature_name = "D3D12_FEATURE_DATA_D3D12_OPTIONS"
-        else:
-            feature_name = f"D3D12_FEATURE_DATA_D3D12_OPTIONS{i}"
-
+    # Intersect every feature structure emitted by D3d12info. This includes new
+    # feature blocks automatically, so the producer and this script cannot drift
+    # merely because another D3D12_OPTIONS revision was added.
+    feature_names = sorted(
+        key for key in set(adapter1.keys()) | set(adapter2.keys())
+        if key.startswith("D3D12_FEATURE_DATA_")
+    )
+    for feature_name in feature_names:
         intersection = intersect_feature_data(feature_name, adapter1, adapter2)
         if intersection:
             intersection_adapter[feature_name] = intersection
-
-    # Intersect D3D12_FEATURE_DATA_SHADER_MODEL
-    shader_model = intersect_feature_data(
-        "D3D12_FEATURE_DATA_SHADER_MODEL", adapter1, adapter2)
-    if shader_model:
-        intersection_adapter["D3D12_FEATURE_DATA_SHADER_MODEL"] = shader_model
-
-    # Intersect D3D12_FEATURE_DATA_ROOT_SIGNATURE
-    root_sig = intersect_feature_data(
-        "D3D12_FEATURE_DATA_ROOT_SIGNATURE", adapter1, adapter2)
-    if root_sig:
-        # Clamp HighestVersion to maximum 2
-        if "HighestVersion" in root_sig:
-            root_sig["HighestVersion"] = min(root_sig["HighestVersion"], 2)
-        intersection_adapter["D3D12_FEATURE_DATA_ROOT_SIGNATURE"] = root_sig
-
-    # Intersect D3D12_FEATURE_DATA_FEATURE_LEVELS
-    feature_levels = intersect_feature_data(
-        "D3D12_FEATURE_DATA_FEATURE_LEVELS", adapter1, adapter2)
-    if feature_levels:
-        intersection_adapter["D3D12_FEATURE_DATA_FEATURE_LEVELS"] = feature_levels
 
     # Intersect GetDescriptorHandleIncrementSize (use MAX)
     descriptor_sizes = intersect_descriptor_handle_increment_size(
@@ -279,17 +301,6 @@ def intersect_profiles(profile1: Dict[str, Any], profile2: Dict[str, Any]) -> Di
     formats = intersect_formats(adapter1, adapter2)
     if formats:
         intersection_adapter["Formats"] = formats
-
-    # Copy other feature data that we're not explicitly intersecting
-    # (keep from adapter1 as baseline)
-    for key in adapter1:
-        if (key.startswith("D3D12_FEATURE_DATA_") and
-            key not in intersection_adapter and
-            not key.startswith("D3D12_FEATURE_DATA_D3D12_OPTIONS") and
-            key != "D3D12_FEATURE_DATA_SHADER_MODEL" and
-            key != "D3D12_FEATURE_DATA_ROOT_SIGNATURE" and
-                key != "D3D12_FEATURE_DATA_FEATURE_LEVELS"):
-            intersection_adapter[key] = adapter1[key]
 
     result["Adapters"] = [intersection_adapter]
 

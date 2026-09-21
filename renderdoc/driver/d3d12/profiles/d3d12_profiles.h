@@ -94,6 +94,65 @@ struct D3D12ProfileData
   D3D12_FEATURE_DATA_D3D12_OPTIONS21 options21;
   bool has_options21 = false;
 
+  D3D12_FEATURE_DATA_D3D12_OPTIONS22 options22;
+  bool has_options22 = false;
+
+  // D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT
+  D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT gpu_virtual_address_support;
+  bool has_gpu_virtual_address_support = false;
+
+  // D3D12_FEATURE_DATA_ARCHITECTURE1
+  D3D12_FEATURE_DATA_ARCHITECTURE1 architecture1;
+  bool has_architecture1 = false;
+
+  // D3D12_FEATURE_DATA_SHADER_CACHE
+  D3D12_FEATURE_DATA_SHADER_CACHE shader_cache;
+  bool has_shader_cache = false;
+
+  // D3D12_FEATURE_DATA_COMMAND_QUEUE_PRIORITY, keyed by command list type and priority.
+  std::unordered_map<UINT64, BOOL> command_queue_priority;
+  bool has_command_queue_priority = false;
+
+  // D3D12_FEATURE_DATA_SERIALIZATION
+  D3D12_FEATURE_DATA_SERIALIZATION serialization;
+  bool has_serialization = false;
+
+  // D3D12_FEATURE_DATA_CROSS_NODE
+  D3D12_FEATURE_DATA_CROSS_NODE cross_node;
+  bool has_cross_node = false;
+
+  // D3D12_FEATURE_DATA_APPLICATION_SPECIFIC_DRIVER_STATE
+  D3D12_FEATURE_DATA_APPLICATION_SPECIFIC_DRIVER_STATE application_specific_driver_state;
+  bool has_application_specific_driver_state = false;
+
+  // D3D12_FEATURE_DATA_EXISTING_HEAPS
+  D3D12_FEATURE_DATA_EXISTING_HEAPS existing_heaps;
+  bool has_existing_heaps = false;
+
+  // D3D12_FEATURE_DATA_BYTECODE_BYPASS_HASH_SUPPORTED
+  D3D12_FEATURE_DATA_BYTECODE_BYPASS_HASH_SUPPORTED bytecode_bypass_hash_supported;
+  bool has_bytecode_bypass_hash_supported = false;
+
+  // D3D12_FEATURE_DATA_TIGHT_ALIGNMENT
+  D3D12_FEATURE_DATA_TIGHT_ALIGNMENT tight_alignment;
+  bool has_tight_alignment = false;
+
+  // D3D12_FEATURE_DATA_PREDICATION
+  D3D12_FEATURE_DATA_PREDICATION predication;
+  bool has_predication = false;
+
+  // D3D12_FEATURE_DATA_HARDWARE_COPY
+  D3D12_FEATURE_DATA_HARDWARE_COPY hardware_copy;
+  bool has_hardware_copy = false;
+
+  // D3D12_FEATURE_DATA_BARRIER_LAYOUT, keyed by command list type and layout.
+  std::unordered_map<UINT64, BOOL> barrier_layout;
+  bool has_barrier_layout = false;
+
+  // D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT
+  D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT shader_cache_abi_support;
+  bool has_shader_cache_abi_support = false;
+
   // Descriptor handle increment sizes
   std::unordered_map<D3D12_DESCRIPTOR_HEAP_TYPE, UINT> descriptor_increment_sizes;
 

@@ -4,6 +4,7 @@
  */
 
 #include "d3d12_profiles.h"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include "json.hpp"
@@ -11,6 +12,211 @@
 #include "common/common.h"
 
 using json = nlohmann::json;
+
+namespace
+{
+bool ParseCommandListType(const std::string &name, D3D12_COMMAND_LIST_TYPE &type)
+{
+  if(name == "TYPE_DIRECT" || name == "D3D12_COMMAND_LIST_TYPE_DIRECT")
+    type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  else if(name == "TYPE_BUNDLE" || name == "D3D12_COMMAND_LIST_TYPE_BUNDLE")
+    type = D3D12_COMMAND_LIST_TYPE_BUNDLE;
+  else if(name == "TYPE_COMPUTE" || name == "D3D12_COMMAND_LIST_TYPE_COMPUTE")
+    type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+  else if(name == "TYPE_COPY" || name == "D3D12_COMMAND_LIST_TYPE_COPY")
+    type = D3D12_COMMAND_LIST_TYPE_COPY;
+  else if(name == "TYPE_VIDEO_DECODE" || name == "D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE")
+    type = D3D12_COMMAND_LIST_TYPE_VIDEO_DECODE;
+  else if(name == "TYPE_VIDEO_PROCESS" || name == "D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS")
+    type = D3D12_COMMAND_LIST_TYPE_VIDEO_PROCESS;
+  else if(name == "TYPE_VIDEO_ENCODE" || name == "D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE")
+    type = D3D12_COMMAND_LIST_TYPE_VIDEO_ENCODE;
+  else
+    return false;
+
+  return true;
+}
+
+bool ParseCommandQueuePriority(const std::string &name, UINT &priority)
+{
+  if(name == "PRIORITY_NORMAL" || name == "D3D12_COMMAND_QUEUE_PRIORITY_NORMAL")
+    priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+  else if(name == "PRIORITY_HIGH" || name == "D3D12_COMMAND_QUEUE_PRIORITY_HIGH")
+    priority = D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
+  else if(name == "PRIORITY_GLOBAL_REALTIME" ||
+          name == "D3D12_COMMAND_QUEUE_PRIORITY_GLOBAL_REALTIME")
+    priority = D3D12_COMMAND_QUEUE_PRIORITY_GLOBAL_REALTIME;
+  else
+    return false;
+
+  return true;
+}
+
+UINT64 CommandQueuePriorityKey(D3D12_COMMAND_LIST_TYPE type, UINT priority)
+{
+  return (UINT64(UINT32(type)) << 32) | UINT64(priority);
+}
+
+UINT64 BarrierLayoutKey(D3D12_COMMAND_LIST_TYPE type, D3D12_BARRIER_LAYOUT layout)
+{
+  return (UINT64(UINT32(type)) << 32) | UINT64(UINT32(layout));
+}
+
+bool ParseBarrierLayout(const std::string &name, D3D12_BARRIER_LAYOUT &layout)
+{
+  static const std::unordered_map<std::string, D3D12_BARRIER_LAYOUT> names = {
+      {"LAYOUT_UNDEFINED", D3D12_BARRIER_LAYOUT_UNDEFINED},
+      {"D3D12_BARRIER_LAYOUT_UNDEFINED", D3D12_BARRIER_LAYOUT_UNDEFINED},
+      {"LAYOUT_COMMON", D3D12_BARRIER_LAYOUT_COMMON},
+      {"D3D12_BARRIER_LAYOUT_COMMON", D3D12_BARRIER_LAYOUT_COMMON},
+      {"LAYOUT_GENERIC_READ", D3D12_BARRIER_LAYOUT_GENERIC_READ},
+      {"D3D12_BARRIER_LAYOUT_GENERIC_READ", D3D12_BARRIER_LAYOUT_GENERIC_READ},
+      {"LAYOUT_RENDER_TARGET", D3D12_BARRIER_LAYOUT_RENDER_TARGET},
+      {"D3D12_BARRIER_LAYOUT_RENDER_TARGET", D3D12_BARRIER_LAYOUT_RENDER_TARGET},
+      {"LAYOUT_UNORDERED_ACCESS", D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS},
+      {"D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS", D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS},
+      {"LAYOUT_DEPTH_STENCIL_WRITE", D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE},
+      {"D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE", D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_WRITE},
+      {"LAYOUT_DEPTH_STENCIL_READ", D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ},
+      {"D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ", D3D12_BARRIER_LAYOUT_DEPTH_STENCIL_READ},
+      {"LAYOUT_SHADER_RESOURCE", D3D12_BARRIER_LAYOUT_SHADER_RESOURCE},
+      {"D3D12_BARRIER_LAYOUT_SHADER_RESOURCE", D3D12_BARRIER_LAYOUT_SHADER_RESOURCE},
+      {"LAYOUT_COPY_SOURCE", D3D12_BARRIER_LAYOUT_COPY_SOURCE},
+      {"D3D12_BARRIER_LAYOUT_COPY_SOURCE", D3D12_BARRIER_LAYOUT_COPY_SOURCE},
+      {"LAYOUT_COPY_DEST", D3D12_BARRIER_LAYOUT_COPY_DEST},
+      {"D3D12_BARRIER_LAYOUT_COPY_DEST", D3D12_BARRIER_LAYOUT_COPY_DEST},
+      {"LAYOUT_RESOLVE_SOURCE", D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE},
+      {"D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE", D3D12_BARRIER_LAYOUT_RESOLVE_SOURCE},
+      {"LAYOUT_RESOLVE_DEST", D3D12_BARRIER_LAYOUT_RESOLVE_DEST},
+      {"D3D12_BARRIER_LAYOUT_RESOLVE_DEST", D3D12_BARRIER_LAYOUT_RESOLVE_DEST},
+      {"LAYOUT_SHADING_RATE_SOURCE", D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE},
+      {"D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE", D3D12_BARRIER_LAYOUT_SHADING_RATE_SOURCE},
+      {"LAYOUT_VIDEO_DECODE_READ", D3D12_BARRIER_LAYOUT_VIDEO_DECODE_READ},
+      {"D3D12_BARRIER_LAYOUT_VIDEO_DECODE_READ", D3D12_BARRIER_LAYOUT_VIDEO_DECODE_READ},
+      {"LAYOUT_VIDEO_DECODE_WRITE", D3D12_BARRIER_LAYOUT_VIDEO_DECODE_WRITE},
+      {"D3D12_BARRIER_LAYOUT_VIDEO_DECODE_WRITE", D3D12_BARRIER_LAYOUT_VIDEO_DECODE_WRITE},
+      {"LAYOUT_VIDEO_PROCESS_READ", D3D12_BARRIER_LAYOUT_VIDEO_PROCESS_READ},
+      {"D3D12_BARRIER_LAYOUT_VIDEO_PROCESS_READ", D3D12_BARRIER_LAYOUT_VIDEO_PROCESS_READ},
+      {"LAYOUT_VIDEO_PROCESS_WRITE", D3D12_BARRIER_LAYOUT_VIDEO_PROCESS_WRITE},
+      {"D3D12_BARRIER_LAYOUT_VIDEO_PROCESS_WRITE", D3D12_BARRIER_LAYOUT_VIDEO_PROCESS_WRITE},
+      {"LAYOUT_VIDEO_ENCODE_READ", D3D12_BARRIER_LAYOUT_VIDEO_ENCODE_READ},
+      {"D3D12_BARRIER_LAYOUT_VIDEO_ENCODE_READ", D3D12_BARRIER_LAYOUT_VIDEO_ENCODE_READ},
+      {"LAYOUT_VIDEO_ENCODE_WRITE", D3D12_BARRIER_LAYOUT_VIDEO_ENCODE_WRITE},
+      {"D3D12_BARRIER_LAYOUT_VIDEO_ENCODE_WRITE", D3D12_BARRIER_LAYOUT_VIDEO_ENCODE_WRITE},
+      {"LAYOUT_DIRECT_QUEUE_COMMON", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON},
+      {"D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COMMON},
+      {"LAYOUT_DIRECT_QUEUE_GENERIC_READ", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ},
+      {"D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ",
+       D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ},
+      {"LAYOUT_DIRECT_QUEUE_UNORDERED_ACCESS", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_UNORDERED_ACCESS},
+      {"D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_UNORDERED_ACCESS",
+       D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_UNORDERED_ACCESS},
+      {"LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE},
+      {"D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE",
+       D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_SHADER_RESOURCE},
+      {"LAYOUT_DIRECT_QUEUE_COPY_SOURCE", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_SOURCE},
+      {"D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_SOURCE", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_SOURCE},
+      {"LAYOUT_DIRECT_QUEUE_COPY_DEST", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_DEST},
+      {"D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_DEST", D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_COPY_DEST},
+      {"LAYOUT_COMPUTE_QUEUE_COMMON", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COMMON},
+      {"D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COMMON", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COMMON},
+      {"LAYOUT_COMPUTE_QUEUE_GENERIC_READ", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_GENERIC_READ},
+      {"D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_GENERIC_READ",
+       D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_GENERIC_READ},
+      {"LAYOUT_COMPUTE_QUEUE_UNORDERED_ACCESS", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_UNORDERED_ACCESS},
+      {"D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_UNORDERED_ACCESS",
+       D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_UNORDERED_ACCESS},
+      {"LAYOUT_COMPUTE_QUEUE_SHADER_RESOURCE", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_SHADER_RESOURCE},
+      {"D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_SHADER_RESOURCE",
+       D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_SHADER_RESOURCE},
+      {"LAYOUT_COMPUTE_QUEUE_COPY_SOURCE", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COPY_SOURCE},
+      {"D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COPY_SOURCE",
+       D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COPY_SOURCE},
+      {"LAYOUT_COMPUTE_QUEUE_COPY_DEST", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COPY_DEST},
+      {"D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COPY_DEST", D3D12_BARRIER_LAYOUT_COMPUTE_QUEUE_COPY_DEST},
+      {"LAYOUT_DIRECT_QUEUE_GENERIC_READ_COMPUTE_QUEUE_ACCESSIBLE",
+       D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ_COMPUTE_QUEUE_ACCESSIBLE},
+      {"D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ_COMPUTE_QUEUE_ACCESSIBLE",
+       D3D12_BARRIER_LAYOUT_DIRECT_QUEUE_GENERIC_READ_COMPUTE_QUEUE_ACCESSIBLE},
+  };
+
+  auto it = names.find(name);
+  if(it == names.end())
+    return false;
+  layout = it->second;
+  return true;
+}
+
+UINT64 ParseVersionNumber(const json &value)
+{
+  if(value.is_number_unsigned() || value.is_number_integer())
+    return value.get<UINT64>();
+
+  if(!value.is_string())
+    return 0;
+
+  const std::string version = value.get<std::string>();
+  if(version.find('.') == std::string::npos)
+  {
+    try
+    {
+      size_t parsed_chars = 0;
+      const UINT64 parsed = std::stoull(version, &parsed_chars);
+      return parsed_chars == version.size() ? parsed : 0;
+    }
+    catch(const std::exception &)
+    {
+      return 0;
+    }
+  }
+
+  UINT16 parts[4] = {};
+  size_t start = 0;
+  for(size_t i = 0; i < 4 && start <= version.size(); i++)
+  {
+    const size_t end = version.find('.', start);
+    const std::string part = version.substr(start, end == std::string::npos ? end : end - start);
+    if(part.empty())
+      return 0;
+    try
+    {
+      const unsigned long parsed = std::stoul(part);
+      if(parsed > 0xffff)
+        return 0;
+      parts[i] = static_cast<UINT16>(parsed);
+    }
+    catch(const std::exception &)
+    {
+      return 0;
+    }
+    if(end == std::string::npos)
+    {
+      for(size_t j = i + 1; j < 4; j++)
+        parts[j] = 0;
+      UINT64 result = 0;
+      for(size_t j = 0; j < 4; j++)
+        result |= UINT64(parts[j]) << ((3 - j) * 16);
+      return result;
+    }
+    start = end + 1;
+  }
+
+  return 0;
+}
+
+bool ParseCommandQueuePriorityKey(const std::string &key, D3D12_COMMAND_LIST_TYPE &type,
+                                  UINT &priority)
+{
+  const size_t first_dot = key.find('.');
+  const size_t second_dot = key.find('.', first_dot == std::string::npos ? first_dot : first_dot + 1);
+  if(first_dot == std::string::npos || second_dot == std::string::npos ||
+     key.substr(second_dot + 1) != "PriorityForTypeIsSupported")
+    return false;
+
+  return ParseCommandListType(key.substr(0, first_dot), type) &&
+         ParseCommandQueuePriority(key.substr(first_dot + 1, second_dot - first_dot - 1), priority);
+}
+}    // namespace
 
 D3D12Profile::D3D12Profile() : m_profile_loaded(false)
 {
@@ -102,6 +308,17 @@ bool D3D12Profile::ParseJSON(std::ifstream &json_file)
       this->m_profile_data.has_options = true;
     }
 
+    // Parse D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT
+    if(adapter.contains("D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT"];
+      this->m_profile_data.gpu_virtual_address_support.MaxGPUVirtualAddressBitsPerResource =
+          data.value("MaxGPUVirtualAddressBitsPerResource", 0U);
+      this->m_profile_data.gpu_virtual_address_support.MaxGPUVirtualAddressBitsPerProcess =
+          data.value("MaxGPUVirtualAddressBitsPerProcess", 0U);
+      this->m_profile_data.has_gpu_virtual_address_support = true;
+    }
+
     // Parse D3D12_FEATURE_DATA_SHADER_MODEL
     if(adapter.contains("D3D12_FEATURE_DATA_SHADER_MODEL"))
     {
@@ -118,6 +335,75 @@ bool D3D12Profile::ParseJSON(std::ifstream &json_file)
       this->m_profile_data.root_signature.HighestVersion =
           static_cast<D3D_ROOT_SIGNATURE_VERSION>(rs.value("HighestVersion", 0));
       this->m_profile_data.has_root_signature = true;
+    }
+
+    // Parse D3D12_FEATURE_DATA_ARCHITECTURE1
+    if(adapter.contains("D3D12_FEATURE_DATA_ARCHITECTURE1"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_ARCHITECTURE1"];
+      this->m_profile_data.architecture1.NodeIndex = data.value("NodeIndex", 0U);
+      this->m_profile_data.architecture1.TileBasedRenderer = data.value("TileBasedRenderer", false);
+      this->m_profile_data.architecture1.UMA = data.value("UMA", false);
+      this->m_profile_data.architecture1.CacheCoherentUMA = data.value("CacheCoherentUMA", false);
+      this->m_profile_data.architecture1.IsolatedMMU = data.value("IsolatedMMU", false);
+      this->m_profile_data.has_architecture1 = true;
+    }
+
+    // Parse D3D12_FEATURE_DATA_SHADER_CACHE
+    if(adapter.contains("D3D12_FEATURE_DATA_SHADER_CACHE"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_SHADER_CACHE"];
+      this->m_profile_data.shader_cache.SupportFlags =
+          static_cast<D3D12_SHADER_CACHE_SUPPORT_FLAGS>(data.value("SupportFlags", 0U));
+      this->m_profile_data.has_shader_cache = true;
+    }
+
+    // Parse D3D12_FEATURE_DATA_COMMAND_QUEUE_PRIORITY. Profiles use flattened keys such as
+    // TYPE_DIRECT.PRIORITY_NORMAL.PriorityForTypeIsSupported.
+    if(adapter.contains("D3D12_FEATURE_DATA_COMMAND_QUEUE_PRIORITY"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_COMMAND_QUEUE_PRIORITY"];
+      this->m_profile_data.has_command_queue_priority = true;
+
+      for(auto &entry : data.items())
+      {
+        D3D12_COMMAND_LIST_TYPE type = D3D12_COMMAND_LIST_TYPE_NONE;
+        UINT priority = 0;
+        if(ParseCommandQueuePriorityKey(entry.key(), type, priority) && entry.value().is_boolean())
+        {
+          this->m_profile_data.command_queue_priority[CommandQueuePriorityKey(type, priority)] =
+              entry.value().get<bool>();
+        }
+      }
+    }
+
+    // Parse D3D12_FEATURE_DATA_SERIALIZATION
+    if(adapter.contains("D3D12_FEATURE_DATA_SERIALIZATION"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_SERIALIZATION"];
+      this->m_profile_data.serialization.NodeIndex = data.value("NodeIndex", 0U);
+      this->m_profile_data.serialization.HeapSerializationTier =
+          static_cast<D3D12_HEAP_SERIALIZATION_TIER>(data.value("HeapSerializationTier", 0));
+      this->m_profile_data.has_serialization = true;
+    }
+
+    // Parse D3D12_FEATURE_DATA_CROSS_NODE
+    if(adapter.contains("D3D12_FEATURE_DATA_CROSS_NODE"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_CROSS_NODE"];
+      this->m_profile_data.cross_node.SharingTier =
+          static_cast<D3D12_CROSS_NODE_SHARING_TIER>(data.value("SharingTier", 0));
+      this->m_profile_data.cross_node.AtomicShaderInstructions =
+          data.value("AtomicShaderInstructions", false);
+      this->m_profile_data.has_cross_node = true;
+    }
+
+    // Parse D3D12_FEATURE_DATA_EXISTING_HEAPS
+    if(adapter.contains("D3D12_FEATURE_DATA_EXISTING_HEAPS"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_EXISTING_HEAPS"];
+      this->m_profile_data.existing_heaps.Supported = data.value("Supported", false);
+      this->m_profile_data.has_existing_heaps = true;
     }
 
     // Parse D3D12_FEATURE_DATA_FEATURE_LEVELS
@@ -415,6 +701,110 @@ bool D3D12Profile::ParseJSON(std::ifstream &json_file)
       this->m_profile_data.has_options21 = true;
     }
 
+    // Parse D3D12_FEATURE_DATA_D3D12_OPTIONS22
+    if(adapter.contains("D3D12_FEATURE_DATA_D3D12_OPTIONS22"))
+    {
+      auto opts = adapter["D3D12_FEATURE_DATA_D3D12_OPTIONS22"];
+      this->m_profile_data.options22.ShaderExecutionReorderingActuallyReorders =
+          opts.value("ShaderExecutionReorderingActuallyReorders", false);
+      this->m_profile_data.options22.CreateByteOffsetViewsSupported =
+          opts.value("CreateByteOffsetViewsSupported", false);
+      this->m_profile_data.options22.Max1DDispatchSize = opts.value("Max1DDispatchSize", 0U);
+      this->m_profile_data.options22.Max1DDispatchMeshSize = opts.value("Max1DDispatchMeshSize", 0U);
+      this->m_profile_data.has_options22 = true;
+    }
+
+    // Parse simple boolean feature-data blocks.
+    if(adapter.contains("D3D12_FEATURE_DATA_APPLICATION_SPECIFIC_DRIVER_STATE"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_APPLICATION_SPECIFIC_DRIVER_STATE"];
+      this->m_profile_data.application_specific_driver_state.Supported =
+          data.value("Supported", false);
+      this->m_profile_data.has_application_specific_driver_state = true;
+    }
+
+    if(adapter.contains("D3D12_FEATURE_DATA_BYTECODE_BYPASS_HASH_SUPPORTED"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_BYTECODE_BYPASS_HASH_SUPPORTED"];
+      this->m_profile_data.bytecode_bypass_hash_supported.Supported = data.value("Supported", false);
+      this->m_profile_data.has_bytecode_bypass_hash_supported = true;
+    }
+
+    if(adapter.contains("D3D12_FEATURE_DATA_TIGHT_ALIGNMENT"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_TIGHT_ALIGNMENT"];
+      this->m_profile_data.tight_alignment.SupportTier =
+          static_cast<D3D12_TIGHT_ALIGNMENT_TIER>(data.value("SupportTier", 0));
+      this->m_profile_data.has_tight_alignment = true;
+    }
+
+    if(adapter.contains("D3D12_FEATURE_DATA_PREDICATION"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_PREDICATION"];
+      this->m_profile_data.predication.Supported = data.value("Supported", false);
+      this->m_profile_data.has_predication = true;
+    }
+
+    if(adapter.contains("D3D12_FEATURE_DATA_HARDWARE_COPY"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_HARDWARE_COPY"];
+      this->m_profile_data.hardware_copy.Supported = data.value("Supported", false);
+      this->m_profile_data.has_hardware_copy = true;
+    }
+
+    // Parse D3D12_FEATURE_DATA_BARRIER_LAYOUT. The profile schema nests layout fields under
+    // command-list type names, for example TYPE_DIRECT -> LAYOUT_COMMON -> bool.
+    if(adapter.contains("D3D12_FEATURE_DATA_BARRIER_LAYOUT"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_BARRIER_LAYOUT"];
+      this->m_profile_data.has_barrier_layout = true;
+      for(auto &type_entry : data.items())
+      {
+        D3D12_COMMAND_LIST_TYPE type = D3D12_COMMAND_LIST_TYPE_NONE;
+        if(!ParseCommandListType(type_entry.key(), type) || !type_entry.value().is_object())
+          continue;
+
+        for(auto &layout_entry : type_entry.value().items())
+        {
+          D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_UNDEFINED;
+          if(ParseBarrierLayout(layout_entry.key(), layout) && layout_entry.value().is_boolean())
+          {
+            this->m_profile_data.barrier_layout[BarrierLayoutKey(type, layout)] =
+                layout_entry.value().get<bool>();
+          }
+        }
+      }
+    }
+
+    // Parse D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT. Microsoft versions are emitted as
+    // decimal strings by d3d12info, but numeric values and dotted versions are accepted as well.
+    if(adapter.contains("D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT"))
+    {
+      auto data = adapter["D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT"];
+      const std::string family_utf8 = data.value("szAdapterFamily", std::string());
+      const rdcwstr family = StringFormat::UTF82Wide(rdcstr(family_utf8.c_str(), family_utf8.size()));
+      for(size_t i = 0;
+          i < family.length() &&
+          i + 1 <
+              sizeof(this->m_profile_data.shader_cache_abi_support.szAdapterFamily) / sizeof(WCHAR);
+          i++)
+      {
+        this->m_profile_data.shader_cache_abi_support.szAdapterFamily[i] =
+            static_cast<WCHAR>(static_cast<unsigned char>(family[i]));
+      }
+      this->m_profile_data.shader_cache_abi_support.MinimumABISupportVersion = ParseVersionNumber(
+          data.contains("MinimumABISupportVersion") ? data["MinimumABISupportVersion"] : json(0));
+      this->m_profile_data.shader_cache_abi_support.MaximumABISupportVersion = ParseVersionNumber(
+          data.contains("MaximumABISupportVersion") ? data["MaximumABISupportVersion"] : json(0));
+      this->m_profile_data.shader_cache_abi_support.CompilerVersion.Version =
+          ParseVersionNumber(data.contains("CompilerVersion") ? data["CompilerVersion"] : json(0));
+      this->m_profile_data.shader_cache_abi_support.ApplicationProfileVersion.Version =
+          ParseVersionNumber(data.contains("ApplicationProfileVersion")
+                                 ? data["ApplicationProfileVersion"]
+                                 : json(0));
+      this->m_profile_data.has_shader_cache_abi_support = true;
+    }
+
     // Parse GetDescriptorHandleIncrementSize
     if(adapter.contains("GetDescriptorHandleIncrementSize"))
     {
@@ -514,7 +904,8 @@ bool D3D12Profile::ParseJSON(std::ifstream &json_file)
 
 #define CHECK_FEATURE_SUPPORT(FEATURE_ENUM, HAS_FLAG, DATA_MEMBER, DATA_TYPE)            \
   case FEATURE_ENUM:                                                                     \
-    if(this->m_profile_data.HAS_FLAG && FeatureSupportDataSize == sizeof(DATA_TYPE))     \
+    if(this->m_profile_data.HAS_FLAG && pFeatureSupportData != NULL &&                   \
+       FeatureSupportDataSize == sizeof(DATA_TYPE))                                      \
     {                                                                                    \
       memcpy(pFeatureSupportData, &this->m_profile_data.DATA_MEMBER, sizeof(DATA_TYPE)); \
       return S_OK;                                                                       \
@@ -528,18 +919,48 @@ HRESULT D3D12Profile::CheckFeatureSupport(ID3D12Device *pDevice, D3D12_FEATURE F
   {
     CHECK_FEATURE_SUPPORT(D3D12_FEATURE_D3D12_OPTIONS, has_options, options,
                           D3D12_FEATURE_DATA_D3D12_OPTIONS)
-    CHECK_FEATURE_SUPPORT(D3D12_FEATURE_SHADER_MODEL, has_shader_model, shader_model,
-                          D3D12_FEATURE_DATA_SHADER_MODEL)
-    CHECK_FEATURE_SUPPORT(D3D12_FEATURE_ROOT_SIGNATURE, has_root_signature, root_signature,
-                          D3D12_FEATURE_DATA_ROOT_SIGNATURE)
+    case D3D12_FEATURE_SHADER_MODEL:
+      if(this->m_profile_data.has_shader_model && pFeatureSupportData != NULL &&
+         FeatureSupportDataSize == sizeof(D3D12_FEATURE_DATA_SHADER_MODEL))
+      {
+        auto *data = static_cast<D3D12_FEATURE_DATA_SHADER_MODEL *>(pFeatureSupportData);
+        data->HighestShaderModel = static_cast<D3D_SHADER_MODEL>(
+            std::min(static_cast<UINT>(data->HighestShaderModel),
+                     static_cast<UINT>(this->m_profile_data.shader_model.HighestShaderModel)));
+        return S_OK;
+      }
+      break;
+
+    case D3D12_FEATURE_ROOT_SIGNATURE:
+      if(this->m_profile_data.has_root_signature && pFeatureSupportData != NULL &&
+         FeatureSupportDataSize == sizeof(D3D12_FEATURE_DATA_ROOT_SIGNATURE))
+      {
+        auto *data = static_cast<D3D12_FEATURE_DATA_ROOT_SIGNATURE *>(pFeatureSupportData);
+        data->HighestVersion = static_cast<D3D_ROOT_SIGNATURE_VERSION>(
+            std::min(static_cast<UINT>(data->HighestVersion),
+                     static_cast<UINT>(this->m_profile_data.root_signature.HighestVersion)));
+        return S_OK;
+      }
+      break;
 
     case D3D12_FEATURE_FEATURE_LEVELS:
-      if(this->m_profile_data.has_feature_levels &&
+      if(this->m_profile_data.has_feature_levels && pFeatureSupportData != NULL &&
          FeatureSupportDataSize == sizeof(D3D12_FEATURE_DATA_FEATURE_LEVELS))
       {
-        // Copy only MaxSupportedFeatureLevel, as the input parameters are provided by the application
+        // Preserve the input list and report only a level requested by the application.
         auto *data = static_cast<D3D12_FEATURE_DATA_FEATURE_LEVELS *>(pFeatureSupportData);
-        data->MaxSupportedFeatureLevel = this->m_profile_data.feature_levels.MaxSupportedFeatureLevel;
+        D3D_FEATURE_LEVEL max_supported = D3D_FEATURE_LEVEL(0);
+        if(data->pFeatureLevelsRequested != NULL)
+        {
+          for(UINT i = 0; i < data->NumFeatureLevels; i++)
+          {
+            const D3D_FEATURE_LEVEL requested = data->pFeatureLevelsRequested[i];
+            if(requested <= this->m_profile_data.feature_levels.MaxSupportedFeatureLevel &&
+               requested > max_supported)
+              max_supported = requested;
+          }
+        }
+        data->MaxSupportedFeatureLevel = max_supported;
         return S_OK;
       }
       break;
@@ -586,6 +1007,101 @@ HRESULT D3D12Profile::CheckFeatureSupport(ID3D12Device *pDevice, D3D12_FEATURE F
                             D3D12_FEATURE_DATA_D3D12_OPTIONS20)
       CHECK_FEATURE_SUPPORT(D3D12_FEATURE_D3D12_OPTIONS21, has_options21, options21,
                             D3D12_FEATURE_DATA_D3D12_OPTIONS21)
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_D3D12_OPTIONS22, has_options22, options22,
+                            D3D12_FEATURE_DATA_D3D12_OPTIONS22)
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_GPU_VIRTUAL_ADDRESS_SUPPORT,
+                            has_gpu_virtual_address_support, gpu_virtual_address_support,
+                            D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT)
+
+    case D3D12_FEATURE_ARCHITECTURE1:
+      if(this->m_profile_data.has_architecture1 && pFeatureSupportData != NULL &&
+         FeatureSupportDataSize == sizeof(D3D12_FEATURE_DATA_ARCHITECTURE1))
+      {
+        auto *data = static_cast<D3D12_FEATURE_DATA_ARCHITECTURE1 *>(pFeatureSupportData);
+        if(data->NodeIndex == this->m_profile_data.architecture1.NodeIndex)
+        {
+          const UINT node_index = data->NodeIndex;
+          *data = this->m_profile_data.architecture1;
+          data->NodeIndex = node_index;
+          return S_OK;
+        }
+      }
+      break;
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_SHADER_CACHE, has_shader_cache, shader_cache,
+                            D3D12_FEATURE_DATA_SHADER_CACHE)
+
+    case D3D12_FEATURE_COMMAND_QUEUE_PRIORITY:
+      if(this->m_profile_data.has_command_queue_priority && pFeatureSupportData != NULL &&
+         FeatureSupportDataSize == sizeof(D3D12_FEATURE_DATA_COMMAND_QUEUE_PRIORITY))
+      {
+        auto *data = static_cast<D3D12_FEATURE_DATA_COMMAND_QUEUE_PRIORITY *>(pFeatureSupportData);
+        auto it = this->m_profile_data.command_queue_priority.find(
+            CommandQueuePriorityKey(data->CommandListType, data->Priority));
+        if(it != this->m_profile_data.command_queue_priority.end())
+        {
+          data->PriorityForTypeIsSupported = it->second;
+          return S_OK;
+        }
+      }
+      break;
+
+    case D3D12_FEATURE_SERIALIZATION:
+      if(this->m_profile_data.has_serialization && pFeatureSupportData != NULL &&
+         FeatureSupportDataSize == sizeof(D3D12_FEATURE_DATA_SERIALIZATION))
+      {
+        auto *data = static_cast<D3D12_FEATURE_DATA_SERIALIZATION *>(pFeatureSupportData);
+        if(data->NodeIndex == this->m_profile_data.serialization.NodeIndex)
+        {
+          const UINT node_index = data->NodeIndex;
+          *data = this->m_profile_data.serialization;
+          data->NodeIndex = node_index;
+          return S_OK;
+        }
+      }
+      break;
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_CROSS_NODE, has_cross_node, cross_node,
+                            D3D12_FEATURE_DATA_CROSS_NODE)
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_APPLICATION_SPECIFIC_DRIVER_STATE,
+                            has_application_specific_driver_state, application_specific_driver_state,
+                            D3D12_FEATURE_DATA_APPLICATION_SPECIFIC_DRIVER_STATE)
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_EXISTING_HEAPS, has_existing_heaps, existing_heaps,
+                            D3D12_FEATURE_DATA_EXISTING_HEAPS)
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_BYTECODE_BYPASS_HASH_SUPPORTED,
+                            has_bytecode_bypass_hash_supported, bytecode_bypass_hash_supported,
+                            D3D12_FEATURE_DATA_BYTECODE_BYPASS_HASH_SUPPORTED)
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_D3D12_TIGHT_ALIGNMENT, has_tight_alignment,
+                            tight_alignment, D3D12_FEATURE_DATA_TIGHT_ALIGNMENT)
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_PREDICATION, has_predication, predication,
+                            D3D12_FEATURE_DATA_PREDICATION)
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_HARDWARE_COPY, has_hardware_copy, hardware_copy,
+                            D3D12_FEATURE_DATA_HARDWARE_COPY)
+
+    case D3D12_FEATURE_BARRIER_LAYOUT:
+      if(this->m_profile_data.has_barrier_layout && pFeatureSupportData != NULL &&
+         FeatureSupportDataSize == sizeof(D3D12_FEATURE_DATA_BARRIER_LAYOUT))
+      {
+        auto *data = static_cast<D3D12_FEATURE_DATA_BARRIER_LAYOUT *>(pFeatureSupportData);
+        auto it = this->m_profile_data.barrier_layout.find(
+            BarrierLayoutKey(data->CommandListType, data->Layout));
+        if(it != this->m_profile_data.barrier_layout.end())
+        {
+          data->Supported = it->second;
+          return S_OK;
+        }
+      }
+      break;
+
+      CHECK_FEATURE_SUPPORT(D3D12_FEATURE_SHADER_CACHE_ABI_SUPPORT, has_shader_cache_abi_support,
+                            shader_cache_abi_support, D3D12_FEATURE_DATA_SHADERCACHE_ABI_SUPPORT)
 
     case D3D12_FEATURE_FORMAT_SUPPORT:
       if(this->m_profile_data.formats.empty())
@@ -921,8 +1437,7 @@ D3D12_RESOURCE_ALLOCATION_INFO D3D12Profile::GetResourceAllocationInfo3(
         [&](uint32_t resourceIdx, const D3D12_RESOURCE_DESC1 *pCustomDesc) {
           const D3D12_RESOURCE_DESC1 *pDesc =
               pCustomDesc ? pCustomDesc : &pResourceDescs[resourceIdx];
-          const UINT32 *pNumFormats =
-              pNumCastableFormats ? &pNumCastableFormats[resourceIdx] : NULL;
+          const UINT32 *pNumFormats = pNumCastableFormats ? &pNumCastableFormats[resourceIdx] : NULL;
           const DXGI_FORMAT *const *ppFormats =
               ppCastableFormats ? &ppCastableFormats[resourceIdx] : NULL;
           return pDevice->GetResourceAllocationInfo3(visibleMask, 1, pDesc, pNumFormats, ppFormats,
