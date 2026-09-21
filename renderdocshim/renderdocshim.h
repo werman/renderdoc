@@ -29,7 +29,7 @@ struct ShimData
   char debuglog[2048];
   char capfile[2048];
 
-  unsigned char opts[512];
+  char opts[4096];
 };
 
 #ifdef WIN64

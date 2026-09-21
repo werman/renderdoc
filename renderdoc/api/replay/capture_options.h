@@ -24,7 +24,6 @@
 
 #pragma once
 
-#include <stddef.h>
 #include <stdint.h>
 #include "apidefs.h"
 #include "rdcstr.h"
@@ -46,9 +45,6 @@ struct CaptureOptions
   DOCUMENT("");
   CaptureOptions()
   {
-    // since we're reading from all POD bytes including padding in EncodeAsString, memset them to 0.
-    // captureFileTemplate is non-POD and must be constructed normally.
-    memset(this, 0, offsetof(CaptureOptions, captureFileTemplate));
     allowVSync = true;
     allowFullscreen = true;
     apiValidation = false;
@@ -72,8 +68,8 @@ struct CaptureOptions
   inline rdcstr EncodeAsString() const
   {
     rdcstr optstr;
-    const size_t podSize = offsetof(CaptureOptions, captureFileTemplate);
-    optstr.reserve(podSize * 2 + captureFileTemplate.size() * 2 + sizeof(uint32_t) * 2);
+    const size_t fixedSize = sizeof(bool) * 10 + sizeof(uint32_t) * 2;
+    optstr.reserve((fixedSize + sizeof(uint32_t) + captureFileTemplate.size()) * 2);
 
     auto encodeByte = [&optstr](byte b) {
       optstr.push_back(char('a' + ((b >> 4) & 0xf)));
@@ -85,10 +81,25 @@ struct CaptureOptions
         encodeByte(data[i]);
     };
 
-    encodeBytes((const byte *)this, podSize);
+    auto encodeValue = [&encodeBytes](const auto &value) {
+      encodeBytes((const byte *)&value, sizeof(value));
+    };
+
+    encodeValue(allowVSync);
+    encodeValue(allowFullscreen);
+    encodeValue(apiValidation);
+    encodeValue(captureCallstacks);
+    encodeValue(captureCallstacksOnlyActions);
+    encodeValue(delayForDebugger);
+    encodeValue(verifyBufferAccess);
+    encodeValue(hookIntoChildren);
+    encodeValue(refAllResources);
+    encodeValue(captureAllCmdLists);
+    encodeValue(debugOutputMute);
+    encodeValue(softMemoryLimit);
 
     uint32_t strLen = (uint32_t)captureFileTemplate.size();
-    encodeBytes((const byte *)&strLen, sizeof(strLen));
+    encodeValue(strLen);
     encodeBytes((const byte *)captureFileTemplate.c_str(), strLen);
 
     return optstr;
@@ -101,9 +112,9 @@ object in place.
 )");
   inline void DecodeFromString(const rdcstr &encoded)
   {
-    const size_t podSize = offsetof(CaptureOptions, captureFileTemplate);
+    const size_t fixedSize = sizeof(bool) * 10 + sizeof(uint32_t) * 2;
 
-    if(encoded.size() < podSize * 2 + sizeof(uint32_t) * 2)
+    if(encoded.size() < (fixedSize + sizeof(uint32_t)) * 2)
       return;
 
     size_t offset = 0;
@@ -120,12 +131,27 @@ object in place.
         data[i] = decodeByte();
     };
 
-    decodeBytes((byte *)this, podSize);
+    auto decodeValue = [&decodeBytes](auto &value) {
+      decodeBytes((byte *)&value, sizeof(value));
+    };
+
+    decodeValue(allowVSync);
+    decodeValue(allowFullscreen);
+    decodeValue(apiValidation);
+    decodeValue(captureCallstacks);
+    decodeValue(captureCallstacksOnlyActions);
+    decodeValue(delayForDebugger);
+    decodeValue(verifyBufferAccess);
+    decodeValue(hookIntoChildren);
+    decodeValue(refAllResources);
+    decodeValue(captureAllCmdLists);
+    decodeValue(debugOutputMute);
+    decodeValue(softMemoryLimit);
 
     uint32_t strLen = 0;
-    decodeBytes((byte *)&strLen, sizeof(strLen));
+    decodeValue(strLen);
 
-    if(encoded.size() < offset + strLen * 2)
+    if(strLen > (encoded.size() - offset) / 2)
       return;
 
     captureFileTemplate.resize(strLen);

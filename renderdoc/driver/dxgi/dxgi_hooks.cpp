@@ -289,6 +289,10 @@ private:
   {
     if(ppFactory)
       *ppFactory = NULL;
+
+    if(!createFunc)
+      return E_NOINTERFACE;
+
     HRESULT ret = createFunc(riid, ppFactory);
 
     if(SUCCEEDED(ret))
@@ -326,6 +330,10 @@ private:
   {
     if(ppFactory)
       *ppFactory = NULL;
+
+    if(!createFunc)
+      return E_NOINTERFACE;
+
     HRESULT ret = createFunc(Flags, riid, ppFactory);
 
     if(SUCCEEDED(ret))

@@ -198,10 +198,14 @@ extern "C" __declspec(dllexport) void __cdecl INTERNAL_GetTargetControlIdent(uin
     *ident = RenderDoc::Inst().GetTargetControlIdent();
 }
 
-extern "C" __declspec(dllexport) void __cdecl INTERNAL_SetCaptureOptions(CaptureOptions *opts)
+extern "C" __declspec(dllexport) void __cdecl INTERNAL_SetCaptureOptions(const char *encoded)
 {
-  if(opts)
-    RenderDoc::Inst().SetCaptureOptions(*opts);
+  if(encoded)
+  {
+    CaptureOptions opts;
+    opts.DecodeFromString(encoded);
+    RenderDoc::Inst().SetCaptureOptions(opts);
+  }
 }
 
 extern "C" __declspec(dllexport) void __cdecl INTERNAL_SetCaptureFile(const char *capfile)
@@ -1008,8 +1012,9 @@ rdcpair<RDResult, uint32_t> Process::InjectIntoProcess(uint32_t pid,
     InjectFunctionCall(hProcess, loc, "INTERNAL_SetDebugLogFile", (void *)debugLogfile.c_str(),
                        debugLogfile.size() + 1);
 
-    InjectFunctionCall(hProcess, loc, "INTERNAL_SetCaptureOptions", (CaptureOptions *)&opts,
-                       sizeof(CaptureOptions));
+    rdcstr encodedOpts = opts.EncodeAsString();
+    InjectFunctionCall(hProcess, loc, "INTERNAL_SetCaptureOptions", (void *)encodedOpts.c_str(),
+                       encodedOpts.size() + 1);
 
     InjectFunctionCall(hProcess, loc, "INTERNAL_GetTargetControlIdent", &result.second,
                        sizeof(result.second));

@@ -801,6 +801,7 @@ public:
   {
     CaptureOptions cmdopts;
     cmdopts.DecodeFromString(rdcstr(opts.c_str(), opts.size()));
+    const rdcstr encodedOpts = cmdopts.EncodeAsString();
 
     // make sure the user doesn't accidentally run this with 'a' as a parameter or something.
     // "a.exe" is over 4 characters so this limit should not be a problem.
@@ -809,6 +810,12 @@ public:
       std::cerr
           << "globalhook path match is too short/general. Danger of matching too many processes!"
           << std::endl;
+      return 1;
+    }
+
+    if(encodedOpts.size() >= sizeof(((ShimData *)NULL)->opts))
+    {
+      std::cerr << "globalhook capture options are too large." << std::endl;
       return 1;
     }
 
@@ -862,10 +869,7 @@ public:
         wcsncpy_s(shimdata->rdocpath, rdocpath, _TRUNCATE);
         strncpy_s(shimdata->capfile, capfile.c_str(), _TRUNCATE);
         strncpy_s(shimdata->debuglog, debuglog.c_str(), _TRUNCATE);
-        memcpy(shimdata->opts, &cmdopts, sizeof(CaptureOptions));
-
-        static_assert(sizeof(CaptureOptions) <= sizeof(shimdata->opts),
-                      "ShimData options is too small");
+        strncpy_s(shimdata->opts, encodedOpts.c_str(), _TRUNCATE);
 
         // wait until a write comes in over the pipe
         char buf[16] = {0};

@@ -161,7 +161,7 @@ void DisplayRendererPreview(IReplayController *renderer, uint32_t width, uint32_
       return ResourceId();
     };
 
-    for(const ActionDescription *action = last; action != NULL; action = action->previous)
+    for(const ActionDescription *action = last; action != NULL; action = action->previousAction)
     {
       ResourceId vrPreviewTex = findVRTextureInAction(*action);
       if(vrPreviewTex != ResourceId())
@@ -188,6 +188,13 @@ void DisplayRendererPreview(IReplayController *renderer, uint32_t width, uint32_
       if(id != ResourceId())
         d.resourceId = id;
     }
+  }
+
+  if(useVRHeuristic)
+  {
+    const TextureDescription *desc = findTexture(d.resourceId);
+    if(desc && (desc->arraysize > 1 || desc->type == TextureType::Texture3D))
+      d.subresource.slice = ~0U;
   }
 
   DisplayRendererPreview(renderer, d, width, height, numLoops);

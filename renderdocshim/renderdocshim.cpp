@@ -34,8 +34,7 @@
 #include "renderdocshim.h"
 #include <windows.h>
 
-struct CaptureOptions;
-typedef void(__cdecl *pINTERNAL_SetCaptureOptions)(const CaptureOptions *opts);
+typedef void(__cdecl *pINTERNAL_SetCaptureOptions)(const char *encoded);
 typedef void(__cdecl *pINTERNAL_SetLogFile)(const char *logfile);
 typedef void(__cdecl *pINTERNAL_SetDebugLogFile)(const char *logfile);
 
@@ -122,7 +121,7 @@ void CheckHook()
             (pINTERNAL_SetDebugLogFile)GetProcAddress(mod, "INTERNAL_SetDebugLogFile");
 
         if(setopts)
-          setopts((const CaptureOptions *)data->opts);
+          setopts(data->opts);
 
         if(setlogfile && data->capfile[0])
           setlogfile(data->capfile);

@@ -934,7 +934,7 @@ void ReplayOutput::DisplayTex()
   };
 
   auto getSliceGridInfo = [&findTextureDesc](ResourceId primaryId, ResourceId fallbackId,
-                                             uint32_t mip) -> SliceGridInfo
+                                             uint32_t mip, bool allSlices) -> SliceGridInfo
   {
     SliceGridInfo ret;
 
@@ -948,10 +948,13 @@ void ReplayOutput::DisplayTex()
     ret.mipWidth = RDCMAX(1U, texDesc->width >> mip);
     ret.mipHeight = RDCMAX(1U, texDesc->height >> mip);
 
-    if(texDesc->type == TextureType::Texture3D)
-      ret.numSlices = RDCMAX(1U, texDesc->depth >> mip);
-    else
-      ret.numSlices = RDCMAX(1U, texDesc->arraysize);
+    if(allSlices)
+    {
+      if(texDesc->type == TextureType::Texture3D)
+        ret.numSlices = RDCMAX(1U, texDesc->depth >> mip);
+      else
+        ret.numSlices = RDCMAX(1U, texDesc->arraysize);
+    }
 
     return ret;
   };
@@ -963,7 +966,10 @@ void ReplayOutput::DisplayTex()
 
     if(numSlices <= 1)
     {
-      m_pDevice->RenderTexture(srcDisplay);
+      TextureDisplay singleDisplay = srcDisplay;
+      if(singleDisplay.subresource.slice == ~0U)
+        singleDisplay.subresource.slice = 0;
+      m_pDevice->RenderTexture(singleDisplay);
       m_pController->FatalErrorCheck();
       return;
     }
@@ -984,7 +990,7 @@ void ReplayOutput::DisplayTex()
     const float tileWidth = float(gridInfo.mipWidth) * displayScale * gridScale;
     const float tileHeight = float(gridInfo.mipHeight) * displayScale * gridScale;
     const float gridOriginX = srcDisplay.xOffset;
-    const float gridOriginY = 0.0f;
+    const float gridOriginY = srcDisplay.yOffset;
 
     TextureDisplay sliceDisplay = srcDisplay;
     sliceDisplay.scale = displayScale * gridScale;
@@ -1054,7 +1060,7 @@ void ReplayOutput::DisplayTex()
 
   const SliceGridInfo baseGridInfo =
       getSliceGridInfo(texDisplay.resourceId, m_RenderData.texDisplay.resourceId,
-                       texDisplay.subresource.mip);
+                       texDisplay.subresource.mip, texDisplay.subresource.slice == ~0U);
   renderTextureWithSliceGrid(texDisplay, baseGridInfo);
 
   ResourceId id = m_RenderData.texDisplay.resourceId;
@@ -1076,7 +1082,8 @@ void ReplayOutput::DisplayTex()
     texDisplay.linearDisplayAsGamma = false;
     texDisplay.typeCast = CompType::Typeless;
     const SliceGridInfo overlayGridInfo =
-        getSliceGridInfo(texDisplay.resourceId, m_OverlayResourceId, texDisplay.subresource.mip);
+        getSliceGridInfo(texDisplay.resourceId, m_OverlayResourceId, texDisplay.subresource.mip,
+                         texDisplay.subresource.slice == ~0U);
     renderTextureWithSliceGrid(texDisplay, overlayGridInfo);
   }
 }

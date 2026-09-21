@@ -965,7 +965,11 @@ private:
     // there's no "partially successful" error code, so we just lie to the application and pretend
     // that any filtered IIDs also succeeded
     if(!allowedIIDs.empty())
+    {
+      if(!enableFunc)
+        return E_NOINTERFACE;
       return enableFunc((UINT)allowedIIDs.size(), allowedIIDs.data(), NULL, NULL);
+    }
 
     // header says "The call returns E_NOINTERFACE if an unrecognized feature is passed in or
     // Windows Developer mode is not on." so this is the most appropriate error for if no IIDs are
@@ -1002,11 +1006,17 @@ private:
   static HRESULT GetDebugInterface_Internal(PFN_D3D12_GET_DEBUG_INTERFACE getDebugFunc, REFIID riid,
                                             void **ppvDebug)
   {
+    if(ppvDebug)
+      *ppvDebug = NULL;
+
     if(riid == CLSID_D3D12StateObjectFactory)
     {
       RDCLOG("Deliberately reporting no support for state object factories");
       return E_NOINTERFACE;
     }
+
+    if(!getDebugFunc)
+      return E_NOINTERFACE;
 
     IUnknown *realUnk = NULL;
     HRESULT real = getDebugFunc(riid, (void **)&realUnk);
@@ -1039,6 +1049,13 @@ private:
                                        REFIID riid, void **ppvDebug)
   {
     RDCDEBUG("Call to D3D12GetInterface");
+
+    if(ppvDebug)
+      *ppvDebug = NULL;
+
+    if(!getInterfaceFunc)
+      return E_NOINTERFACE;
+
     IUnknown *realUnk = NULL;
     HRESULT real = getInterfaceFunc(rclsid, riid, (void **)&realUnk);
 

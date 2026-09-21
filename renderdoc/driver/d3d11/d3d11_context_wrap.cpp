@@ -8029,7 +8029,11 @@ bool WrappedID3D11DeviceContext::Serialise_Unmap(SerialiserType &ser, ID3D11Reso
     if(exactNoOverwrite && intercept.MapType == D3D11_MAP_WRITE_NO_OVERWRITE)
     {
       if(diffStart < diffEnd)
-        intercept.CopyToD3D(diffStart, diffEnd);
+      {
+        RDCASSERT(intercept.numRows == 1 && intercept.numSlices == 1);
+        memcpy((byte *)intercept.d3d.pData + diffStart,
+               (byte *)intercept.app.pData + diffStart, diffEnd - diffStart);
+      }
     }
     else
     {

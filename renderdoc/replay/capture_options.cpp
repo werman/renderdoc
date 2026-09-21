@@ -214,7 +214,19 @@ TEST_CASE("Check CaptureOptions de/serialise to string", "[serialise]")
       CaptureOptions decoded;
       decoded.DecodeFromString(s);
 
-      CHECK(memcmp(&opts, &decoded, sizeof(decoded)) == 0);
+      CHECK(opts.allowVSync == decoded.allowVSync);
+      CHECK(opts.allowFullscreen == decoded.allowFullscreen);
+      CHECK(opts.apiValidation == decoded.apiValidation);
+      CHECK(opts.captureCallstacks == decoded.captureCallstacks);
+      CHECK(opts.captureCallstacksOnlyActions == decoded.captureCallstacksOnlyActions);
+      CHECK(opts.delayForDebugger == decoded.delayForDebugger);
+      CHECK(opts.verifyBufferAccess == decoded.verifyBufferAccess);
+      CHECK(opts.hookIntoChildren == decoded.hookIntoChildren);
+      CHECK(opts.refAllResources == decoded.refAllResources);
+      CHECK(opts.captureAllCmdLists == decoded.captureAllCmdLists);
+      CHECK(opts.debugOutputMute == decoded.debugOutputMute);
+      CHECK(opts.softMemoryLimit == decoded.softMemoryLimit);
+      CHECK(opts.captureFileTemplate == decoded.captureFileTemplate);
     }
   }
 

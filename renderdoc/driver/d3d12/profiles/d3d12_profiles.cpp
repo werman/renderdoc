@@ -22,6 +22,7 @@ D3D12Profile::~D3D12Profile()
 
 bool D3D12Profile::LoadProfile(const std::string &filename)
 {
+  m_profile_loaded = false;
   m_profile_data = D3D12ProfileData();
   try
   {
@@ -920,9 +921,12 @@ D3D12_RESOURCE_ALLOCATION_INFO D3D12Profile::GetResourceAllocationInfo3(
         [&](uint32_t resourceIdx, const D3D12_RESOURCE_DESC1 *pCustomDesc) {
           const D3D12_RESOURCE_DESC1 *pDesc =
               pCustomDesc ? pCustomDesc : &pResourceDescs[resourceIdx];
-          return pDevice->GetResourceAllocationInfo3(visibleMask, 1, pDesc,
-                                                     &pNumCastableFormats[resourceIdx],
-                                                     &ppCastableFormats[resourceIdx], NULL);
+          const UINT32 *pNumFormats =
+              pNumCastableFormats ? &pNumCastableFormats[resourceIdx] : NULL;
+          const DXGI_FORMAT *const *ppFormats =
+              ppCastableFormats ? &ppCastableFormats[resourceIdx] : NULL;
+          return pDevice->GetResourceAllocationInfo3(visibleMask, 1, pDesc, pNumFormats, ppFormats,
+                                                     NULL);
         });
   }
   return info;
